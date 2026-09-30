@@ -1,0 +1,10 @@
+import type { Game } from '../game/Game.ts';
+export function registerGameTools(game:Game) {
+  const context=(document as Document & {modelContext?:{registerTool:(tool:unknown,options?:{signal:AbortSignal})=>unknown}}).modelContext;
+  if(!context?.registerTool)return;
+  const lifecycle=new AbortController();
+  const register=(tool:unknown)=>{try{Promise.resolve(context.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{/* Optional browser capability. */}};
+  register({name:'read_drive_state',title:'Read drive state',description:'Read current speed, fuel, region, camera and session state.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:false},execute(input:unknown){if(!input||typeof input!=='object'||Object.keys(input).length)throw new Error('Expected an empty object');return game.snapshot();}});
+  register({name:'configure_drive_atmosphere',title:'Set driving atmosphere',description:'Apply a manual weather preset and optional hour using the same controls as Settings. Does not request location.',inputSchema:{type:'object',properties:{weather:{type:'string',enum:['clear','partly','overcast','fog','rain','heavy','storm','snow','autumn','random']},hour:{type:'number',minimum:0,maximum:23.9}},required:['weather'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input:unknown){const v=input as {weather:string;hour?:number};if(!v||typeof v!=='object'||Object.keys(v).some(k=>!['weather','hour'].includes(k))||!['clear','partly','overcast','fog','rain','heavy','storm','snow','autumn','random'].includes(v.weather))throw new Error('Invalid weather preset');if(v.hour!==undefined&&(!Number.isFinite(v.hour)||v.hour<0||v.hour>23.9))throw new Error('Hour must be between 0 and 23.9');game.setSetting('weather',v.weather);if(v.hour!==undefined){game.setSetting('timeMode','manual');game.setSetting('hour',v.hour);}game.ui.renderSettings();return {weather:game.weather.mode,hour:game.settings.data.hour};}});
+  window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
+}

@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>R34 audio development check</title>
+<style>body{max-width:850px;margin:40px auto;background:#111;color:#eee;font:16px system-ui;padding:20px}button,select,input{font:inherit;margin:8px}pre{white-space:pre-wrap;background:#202020;padding:20px}label{display:block}button{padding:10px}strong{color:#ffa86c}</style></head>
+<body><h1>Vehicle audio development check</h1><p><strong>Production R34 engine recordings are missing.</strong> Real preview currently plays only road/wind/slip. This page requires no WebGL. Numerical checks use clearly labelled test tones to verify Web Audio, never as production engine assets.</p>
+<button id="start">Start real preview</button><button id="stop">Stop</button><button id="measure">Run native offline numerical checks</button>
+<label>Scenario <select id="scenario"><option value="idle">Idle</option><option value="gentle">Gentle acceleration</option><option value="hard">Hard acceleration</option><option value="cruise">100 km/h cruise</option><option value="power">100 km/h full throttle</option><option value="high">160 km/h acceleration</option><option value="coast">Throttle release/coast</option><option value="brake">Braking without slip</option><option value="slip">Actual-slip squeal</option><option value="reverse">Reverse</option></select></label>
+<label>Engine/squeal volume <input id="volume" type="range" min="0" max="1" step=".05" value=".6"></label>
+<label>Road/wind volume <input id="environment" type="range" min="0" max="1" step=".05" value=".65"></label>
+<label><input id="tunnel" type="checkbox">Tunnel reflection</label><pre id="result">Ready. No listening or quality approval is implied by these diagnostics.</pre>
+<script type="module" src="./VehicleAudioAudition.ts"></script></body></html>
