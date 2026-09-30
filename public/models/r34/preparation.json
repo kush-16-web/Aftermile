@@ -6,240 +6,184 @@
   "sourcePrimitives": 766,
   "triangles": 266060,
   "runtimeTriangles": 266060,
-  "runtimeBytes": 13244520,
+  "runtimeBytes": 13244968,
   "runtimePrimitives": 72,
   "runtimeNodes": 85,
   "scale": 12.21391331757038,
   "wheelPositions": [
     [
       -0.7378925248000894,
-      0.32661255145959933,
+      0.3266125514595992,
       -1.3325
     ],
     [
       0.7378925248000894,
-      0.3266126327461868,
+      0.3266126327461867,
       -1.3325
     ],
     [
       -0.7428850264184788,
-      0.3266984350642934,
+      0.32669843506429336,
       1.3325
     ],
     [
       0.7428850264184788,
-      0.32669843097102924,
+      0.3266984309710292,
       1.3325
     ]
   ],
   "wheelRadii": [
-    0.32430709292509974,
-    0.3243071699140454,
-    0.32430730624461734,
-    0.3243073779159329
+    0.3295218899046848,
+    0.3295219117756836,
+    0.32952316522388536,
+    0.3295232766864052
   ],
   "camberDegrees": [
-    -2.0000050374322873,
-    1.9999997927772095,
-    -2.0000050374322873,
-    1.9999997927772095
+    -2.000005037432287,
+    1.999999792777209,
+    -2.000005037432287,
+    1.999999792777209
   ],
   "sourceTextureReferences": 57,
   "runtimeTextureReferences": 28,
   "images": [
     {
       "name": "Image_2",
-      "width": 1024,
-      "height": 1024,
       "bytes": 588468,
       "sha256": "c94bea635df567228f13aeb4698958ad50e6a36df739b1551c2b362d05796b87"
     },
     {
       "name": "Image_1",
-      "width": 512,
-      "height": 512,
       "bytes": 70840,
       "sha256": "c236f75ea52e1745a4fe8b49f659e46f83b66985fef374dd48a25ded22867449"
     },
     {
       "name": "Image_0",
-      "width": 512,
-      "height": 512,
       "bytes": 32134,
       "sha256": "38a97e58fa78d76d669247cfe7109653013f4f654e0bb6469c8922a9822c7f4c"
     },
     {
       "name": "Image_10",
-      "width": 256,
-      "height": 256,
       "bytes": 55941,
       "sha256": "990d30c2c257a6afb42aed7fc46a272ee25f43b653d9819280c22833a5d44f25"
     },
     {
       "name": "Image_11",
-      "width": 256,
-      "height": 256,
       "bytes": 16777,
       "sha256": "92f789a21b2a1ee90db9eabeac496a166f8a6ce211e0213ce1f0832fb7697677"
     },
     {
       "name": "Image_3",
-      "width": 256,
-      "height": 256,
       "bytes": 2001,
       "sha256": "38fbfb9fe0c8605559130a8729566a5bc5ec28334740ee8024255b62bb5e1caf"
     },
     {
       "name": "Image_12",
-      "width": 128,
-      "height": 128,
       "bytes": 785,
       "sha256": "3d083e650a615aec32aeac0d90f0fc099774bb09c0ea891860f44cbc035b6763"
     },
     {
       "name": "Image_13",
-      "width": 128,
-      "height": 128,
       "bytes": 579,
       "sha256": "0334895e072d7384f04e02b3e76682ed148e02d28252eac9eeb0414d58dccf03"
     },
     {
       "name": "Image_8",
-      "width": 256,
-      "height": 256,
       "bytes": 2943,
       "sha256": "b72437285423d0d050d7a55cc802ced96a41eea83b344ec62ddda8f49d24bf3d"
     },
     {
       "name": "Image_9",
-      "width": 256,
-      "height": 256,
       "bytes": 2728,
       "sha256": "637cf2f81d27f9b63e03d3c49e18b09341f29017ed87f637caf7cec8fd69235e"
     },
     {
       "name": "Image_26",
-      "width": 512,
-      "height": 512,
       "bytes": 113356,
       "sha256": "ea52e65b7c8a6a2467c3b96374b1cf64230b3c3732d3cb58165e5c0ebbfa6af5"
     },
     {
       "name": "Image_27",
-      "width": 512,
-      "height": 512,
       "bytes": 68824,
       "sha256": "df9edf7ab5b06b50bad54218860d7cdf0a5705e3c1ef109c365f45e136fe13b2"
     },
     {
       "name": "Image_4",
-      "width": 64,
-      "height": 32,
       "bytes": 797,
       "sha256": "0ebe4367aa524119490c8fe42f4480978a3812663b8f5b2682ecf23e47e82440"
     },
     {
       "name": "Image_14",
-      "width": 64,
-      "height": 32,
       "bytes": 1124,
       "sha256": "774c9f75f483b3101f9cf0859fa5f08efdf1de2fe7e7824b65e6ef03018c074a"
     },
     {
       "name": "Image_22",
-      "width": 64,
-      "height": 64,
       "bytes": 661,
       "sha256": "133bd1228808df37dd1cb13f7e550a8533fc282a0cb1315a60abcc652c3e917a"
     },
     {
       "name": "Image_23",
-      "width": 64,
-      "height": 64,
       "bytes": 774,
       "sha256": "245efe4086c83d49d18dfccfeadf6fb5e028d95437c18065ed7f20f9a26a88b7"
     },
     {
       "name": "Image_24",
-      "width": 64,
-      "height": 64,
       "bytes": 492,
       "sha256": "9b14a08b987fc7a64e1193e78c81351cf710de399ae276382896189422d66dc7"
     },
     {
       "name": "Image_7",
-      "width": 512,
-      "height": 512,
       "bytes": 66689,
       "sha256": "8ad9b9e3ef9b4d1cf8626f0b646104f3b5a5ddf01710e185ce54dc39ba0969da"
     },
     {
       "name": "Image_5",
-      "width": 512,
-      "height": 512,
       "bytes": 104164,
       "sha256": "e5f8e6e5bdc0b147b57915114cea6b08e98c7ee270e98adea920255dd3e10bdc"
     },
     {
       "name": "Image_6",
-      "width": 512,
-      "height": 512,
       "bytes": 66657,
       "sha256": "fd93c0f199196c0d2a1564e0bcafea0da0c61264c2df03561fa17065173488dd"
     },
     {
       "name": "Image_15",
-      "width": 32,
-      "height": 32,
       "bytes": 74,
       "sha256": "f103f0c84e69070a5fb967daf7d3bfa28c4a57f4a2b021079cac85ef7ed77d61"
     },
     {
       "name": "Image_25",
-      "width": 512,
-      "height": 512,
       "bytes": 88860,
       "sha256": "f266ee8d7ceb2ab0a63b6fdc84b03083053d259aa5775d4c7df3e5aa83f19c16"
     },
     {
       "name": "Image_16",
-      "width": 512,
-      "height": 256,
       "bytes": 15600,
       "sha256": "da77e6e192b88bdcd3c4b7fad609e933ccd3c87d80cdd14d9d0abfd68696a4bc"
     },
     {
       "name": "Image_17",
-      "width": 512,
-      "height": 256,
       "bytes": 9544,
       "sha256": "88b62f1fb4774387aa67e5e1c605e604c9d697f57d3ed8cc355556a6afcf9c4e"
     },
     {
       "name": "Image_20",
-      "width": 1024,
-      "height": 1024,
       "bytes": 1191847,
       "sha256": "5ec3e399d010e2e4e03afad8e88832f6fe3d293f5604bef9bd87b47cf4359884"
     },
     {
       "name": "Image_21",
-      "width": 256,
-      "height": 256,
       "bytes": 108,
       "sha256": "5eb877c63c5e083fed4b7606b6f0e5762c570be254a1851f28b8a52eb0ace140"
     },
     {
       "name": "Image_18",
-      "width": 256,
-      "height": 128,
       "bytes": 25577,
       "sha256": "179bec82d84a9081c32162fed64f6142860e0b6a14afdb8631d33ea2e387d867"
     },
     {
       "name": "Image_19",
-      "width": 256,
-      "height": 128,
       "bytes": 96,
       "sha256": "28b14893bdf87bc40004bf51dcff884edd120796c28462826ea451175d4bbf23"
     }

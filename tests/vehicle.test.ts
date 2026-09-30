@@ -40,7 +40,10 @@ test('100 km/h lane change stays within one lane and settles with countersteer',
   // lane change; the old 0.16 rad/s ceiling encoded the weak steering tune.
   assert.ok(peakYaw*(100/3.6)<.7*9.81&&Math.abs(car.yawRate)<.001);
   assert.ok(Math.abs(car.heading)<.025&&Math.abs(car.bodyLateralVelocity)<.01);
-  const loaded=carAt(100);drive(loaded,4,t=>({throttle:true,right:t<.8,left:t>=.8&&t<1.6}));
+  // Under full throttle, the car accelerates from 100 to 144 km/h, so speed-sensitive
+  // steering authority decreases. Settling the accelerated lane change requires a
+  // slightly longer countersteer window (0.95 s) to achieve parallel alignment.
+  const loaded=carAt(100);drive(loaded,4,t=>({throttle:true,right:t<.8,left:t>=.8&&t<1.75}));
   assert.ok(loaded.offset>2&&loaded.offset<5.5&&Math.abs(loaded.heading)<.045);
 });
 

@@ -14,11 +14,13 @@ function settled(load: number, speed=100/3.6) {
 
 test('100 km/h cruise/full throttle select genuinely different recording layers at identical RPM',()=>{
   const coast=settled(0),cruise=settled(.18),power=settled(1);
+  const sumOn=(c:any)=>c.weights.reduce((s:number,w:number,i:number)=>i%2===0?s+w:s,0);
+  const sumOff=(c:any)=>c.weights.reduce((s:number,w:number,i:number)=>i%2===1?s+w:s,0);
   assert.ok(Math.abs(cruise.rpm-power.rpm)<.001);
-  assert.ok(cruise.weights[5]>cruise.weights[4],'cruise favors the 3200 RPM off-load recording');
-  assert.ok(power.weights[4]>.99&&power.weights[5]<.001,'full load favors the on-load recording');
+  assert.ok(sumOff(cruise)>sumOn(cruise),'cruise favors the off-load recording layers');
+  assert.ok(sumOn(power)>.99&&sumOff(power)<.001,'full load favors the on-load recording');
   assert.ok(power.engineGain>cruise.engineGain*1.7);
-  assert.ok(coast.weights[5]>.99);
+  assert.ok(sumOff(coast)>.99);
 });
 
 test('RPM/load changes, release and refueling stay smooth, finite, bounded and allocation-free in the controls',()=>{
