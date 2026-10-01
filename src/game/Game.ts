@@ -21,12 +21,13 @@ import { Traffic, signalState } from '../traffic/Traffic.ts';
 import { AudioManager } from '../audio/AudioManager.ts';
 import { Companion } from '../companion/Companion.ts';
 import { UI } from '../ui/UI.ts';
+import { VehicleEffects } from '../vehicle/VehicleEffects.ts';
 import { damp, clamp } from '../core/math.ts';
 
 export class Game {
   settings=new Settings();scene=new THREE.Scene();road=new Road();vehicle=new VehicleController(this.road);car=this.vehicle.physics;input=new InputManager();weather=new Weather();audio=new AudioManager(this.vehicle.config);
   renderer:THREE.WebGLRenderer;camera=new THREE.PerspectiveCamera(60,1,.08,5000);cameras:CameraController;
-  world:World;water:Water;life:AmbientLife;hero=this.vehicle.model;traffic:Traffic;sky:Sky;particles:Particles;ui:UI;companion:Companion;
+  world:World;water:Water;life:AmbientLife;hero=this.vehicle.model;effects:VehicleEffects;traffic:Traffic;sky:Sky;particles:Particles;ui:UI;companion:Companion;
   composer:EffectComposer;fxaa:ShaderPass;
   screen:'menu'|'playing'|'paused'='menu';modalOpen=false;zen=false;hiddenHud=false;
   accumulator=0;lastTime=0;time=0;cinematicTime=0;fps=60;saveTimer=0;lastSavedDistance=0;lastRegion='';lastSense=0;mutedVolume=.5;
@@ -38,6 +39,7 @@ export class Game {
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.03;
     this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.info.autoReset=false;
     this.world=new World(this.scene,this.road);this.sky=new Sky(this.scene);this.water=new Water(this.scene);this.life=new AmbientLife(this.scene,this.road,this.world.materials);
+    this.effects=new VehicleEffects(this.scene);
     this.scene.add(this.hero.group);this.traffic=new Traffic(this.scene,this.road);this.particles=new Particles(this.scene);this.cameras=new CameraController(this.camera,canvas,this.vehicle.config);
     const environment=new RoomEnvironment(),pmrem=new THREE.PMREMGenerator(this.renderer);this.scene.environment=pmrem.fromScene(environment,.04).texture;this.scene.environmentIntensity=.5;environment.dispose();pmrem.dispose();
     this.composer=new EffectComposer(this.renderer);this.composer.addPass(new RenderPass(this.scene,this.camera));this.composer.addPass(new OutputPass());this.fxaa=new ShaderPass(FXAAShader);this.composer.addPass(this.fxaa);
@@ -78,8 +80,8 @@ export class Game {
   resume(){this.screen='playing';this.input.enabled=!this.modalOpen;this.input.clear();this.ui.setScreen('playing');void this.audio.start();}
   pause(){this.screen='paused';this.input.enabled=false;this.input.clear();this.audio.pause();this.ui.setScreen('paused');this.persist();}
   menu(){this.persist();this.screen='menu';this.input.enabled=false;this.input.clear();this.audio.pause();this.ui.setScreen('menu');document.body.classList.remove('zen-hidden');}
-  restart(){this.persist();this.car.reset(160);this.car.fuel=100;this.car.distance=0;this.car.cleanDistance=0;this.car.damage=0;this.lastSavedDistance=0;this.traffic.reset();this.world.rebuild(this.car.s);this.cameras.initialized=false;this.start(this.zen);}
-  recover(){this.car.reset();if(this.car.fuel<5)this.car.fuel=8;this.car.damage=0;this.cameras.initialized=false;this.audio.chime();this.ui.toast('Back on the road. Take your time.');}
+  restart(){this.persist();this.car.reset(160);this.car.fuel=100;this.car.distance=0;this.car.cleanDistance=0;this.car.damage=0;this.lastSavedDistance=0;this.traffic.reset();this.effects.reset();this.world.rebuild(this.car.s);this.cameras.initialized=false;this.start(this.zen);}
+  recover(){this.car.reset();if(this.car.fuel<5)this.car.fuel=8;this.car.damage=0;this.cameras.initialized=false;this.effects.reset();this.audio.chime();this.ui.toast('Back on the road. Take your time.');}
   cycleCamera(){this.cameras.mode=(this.cameras.mode+1)%cameraNames.length;this.settings.data.camera=this.cameras.mode;this.settings.save();this.cameras.initialized=false;this.ui.toast(cameraNames[this.cameras.mode]+' camera');}
   setHud(){document.body.classList.toggle('zen-hidden',this.hiddenHud);}
   setSetting(key:keyof SettingsData,value:unknown) {
@@ -120,11 +122,12 @@ export class Game {
     if(moving){this.accumulator+=dt;while(this.accumulator>=1/120){this.time+=1/120;this.vehicle.update(1/120,this.input.keys,s.fuel&&!this.zen,s.damage&&!this.zen);this.traffic.update(1/120,this.time,this.car,this.world.origin,s.traffic*(this.zen&&s.zenLowTraffic?.25:1),this.sky.night,w.wet+w.snow*.5,s.damage&&!this.zen);this.accumulator-=1/120;}}
     else this.accumulator=0;
     this.world.update(this.car.s);const origin=this.world.origin;
-    if(origin!==this.lastOrigin){this.cameras.shiftOrigin(origin-this.lastOrigin);this.lastOrigin=origin;}
+    if(origin!==this.lastOrigin){this.cameras.shiftOrigin(origin-this.lastOrigin);this.effects.shiftOrigin(origin-this.lastOrigin);this.lastOrigin=origin;}
     // Place the complete bounded traffic pool after origin shifts and while paused.
     this.traffic.update(dt,this.time,this.car,origin,s.traffic*(this.zen&&s.zenLowTraffic?.25:1),this.sky.night,w.wet,false,false);
     const station=this.road.station(this.car.s-50);
     const pose=this.vehicle.render(moving?this.accumulator*120:1,origin,this.sky.night);this.position.copy(this.hero.group.position);
+    this.effects.update(dt,this.time,this.car,this.hero,this.camera);
     this.cameras.update(dt,this.cinematicTime,this.car,pose,origin,this.screen==='menu',s.fov,s.smoothing,s.reducedMotion);
     const inTunnel=this.road.isTunnel(this.car.s);
     this.sky.update(moving?dt:0,this.cinematicTime,this.camera,this.position,w,s.timeMode,s.hour,this.weather.mode==='live'?this.weather.city?.timezone:undefined,s.reducedFlashes);

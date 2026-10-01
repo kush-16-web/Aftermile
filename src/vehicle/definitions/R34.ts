@@ -50,7 +50,7 @@ export const R34Config: VehicleConfig = {
     response: 26,
     highwayResponse: 24,
     /** High-speed yaw damping: stabilizes the chassis against high-speed fishtailing. */
-    yawDamping: 0.76,
+    yawDamping: 1.8,
     /** Response curve shaping:
      * linearWeight (0.0-1.0): immediate direct steering bite on initial key touch.
      * powerWeight (0.0-1.0): progressive buildup on sustained key press.
@@ -79,8 +79,16 @@ export const R34Config: VehicleConfig = {
     refuelLitresPerSecond: 4.5,
   },
   audio: {
-    name: 'RB26 inline-six recording profile', status: 'needs-recordings',
-    bands: [{rpm:850},{rpm:1250},{rpm:1800},{rpm:2600},{rpm:3700},{rpm:5200},{rpm:7000}],
-    gain: .65, minPitch: .7, maxPitch: 1.45, rpmResponse: 14, loadResponse: 9,
+    name: 'RB26 inline-six recording profile', status: 'recorded',
+    bands: [
+      { rpm: 850, onLoad: '/audio/r34/idle_on.wav', offLoad: '/audio/r34/idle_off.wav' },
+      { rpm: 1250, onLoad: '/audio/r34/low_on.wav', offLoad: '/audio/r34/low_off.wav' },
+      { rpm: 1800, onLoad: '/audio/r34/mid_low_on.wav', offLoad: '/audio/r34/mid_low_off.wav' },
+      { rpm: 2600, onLoad: '/audio/r34/mid_on.wav', offLoad: '/audio/r34/mid_off.wav' },
+      { rpm: 3700, onLoad: '/audio/r34/mid_high_on.wav', offLoad: '/audio/r34/mid_high_off.wav' },
+      { rpm: 5200, onLoad: '/audio/r34/high_on.wav', offLoad: '/audio/r34/high_off.wav' },
+      { rpm: 7000, onLoad: '/audio/r34/redline_on.wav', offLoad: '/audio/r34/redline_off.wav' },
+    ],
+    gain: .82, minPitch: .75, maxPitch: 1.4, rpmResponse: 14, loadResponse: 9,
   },
 };

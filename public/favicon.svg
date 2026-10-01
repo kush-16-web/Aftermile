@@ -1,1 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#0b1118"/><path d="M16 5v22M6 8l20 16M6 24L26 8M5 16h22" stroke="#ee5365" stroke-width="2"/><path d="M16 10l4 6-4 7-4-7z" fill="#ee5365"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141c28"/>
+      <stop offset="100%" stop-color="#070a0f"/>
+    </linearGradient>
+    <linearGradient id="road" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#2a384c"/>
+      <stop offset="60%" stop-color="#3b4f6b"/>
+      <stop offset="100%" stop-color="#5e7d9b"/>
+    </linearGradient>
+    <linearGradient id="skyGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ff7b54"/>
+      <stop offset="100%" stop-color="#ffb26b"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#70a6ff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Badge -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bg)" stroke="#233245" stroke-width="2"/>
+
+  <!-- Distant Horizon Sun / Dusk Arc -->
+  <circle cx="32" cy="23" r="10" fill="url(#skyGlow)" opacity="0.85"/>
+
+  <!-- Horizon Line -->
+  <line x1="8" y1="24" x2="56" y2="24" stroke="#ffb26b" stroke-width="1.5" opacity="0.4"/>
+
+  <!-- Endless Road Silhouette forming iconic 'A' Structure -->
+  <!-- Left Highway Edge -->
+  <path d="M 32 18 L 8 54 L 18 54 L 32 26 L 46 54 L 56 54 Z" fill="url(#road)"/>
+
+  <!-- Crossbar of the 'A' (Highway Overpass / Road Bridge Accent) -->
+  <path d="M 23 38 L 41 38 L 43 42 L 21 42 Z" fill="#ff7b54" opacity="0.95"/>
+
+  <!-- Center Road Dash / Vanishing Highway Line -->
+  <polygon points="31,24 33,24 33.5,30 30.5,30" fill="url(#beam)"/>
+  <polygon points="30.5,34 33.5,34 34.2,42 29.8,42" fill="url(#beam)"/>
+  <polygon points="29.8,46 34.2,46 35.5,54 28.5,54" fill="url(#beam)"/>
+
+  <!-- Distant Apex Star / Horizon Point -->
+  <circle cx="32" cy="18" r="2.5" fill="#ffffff"/>
+</svg>

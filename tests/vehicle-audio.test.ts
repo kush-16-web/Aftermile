@@ -79,7 +79,8 @@ class Context {
 
 test('unconfigured R34 makes no recording requests and has no fake engine oscillators',async()=>{
   const ctx=new Context(),master=ctx.node();
-  const vehicle=new VehicleAudio(ctx as unknown as AudioContext,master as unknown as GainNode,createVehicleConfig());
+  const unconfigured=createVehicleConfig();unconfigured.audio.bands=[{rpm:850},{rpm:1250},{rpm:1800},{rpm:2600},{rpm:3700},{rpm:5200},{rpm:7000}];
+  const vehicle=new VehicleAudio(ctx as unknown as AudioContext,master as unknown as GainNode,unconfigured);
   await vehicle.ready;assert.equal(vehicle.recordingStatus,'needs-recordings');assert.equal(vehicle.loadedLoops,0);
   assert.equal(vehicle.decodedBytes,0);assert.equal(vehicle.noiseBytes,384000);
   assert.equal(ctx.nodes.filter(n=>n.loop).length,1,'only procedural road/wind/slip share a noise source');

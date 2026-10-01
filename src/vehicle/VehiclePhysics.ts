@@ -68,10 +68,20 @@ export class VehiclePhysics {
     this.shiftTimer = Math.max(0, this.shiftTimer-dt);
     this.input.update(dt, keys, this.speed, c);
     this.grip = c.tires.grip;
-    // One inspectable road-wheel angle curve replaces the compounded authority
-    // multiplier / lateral-acceleration / v² limits of the previous tune.
-    this.maxSteeringAngle = this.steeringLimit(speed);
-    const rackRate = lerp(c.steering.response, c.steering.highwayResponse, clamp(speed/35, 0, 1));
+    
+    // Front steering authority: normal speed-sensitive curve for highway driving,
+    // dynamically expanding to full physical countersteering lock during a genuine slide (slip > 0.35).
+    const baseLimit = this.steeringLimit(speed);
+    const lf = c.wheelbase*(1-c.frontWeight), lr = c.wheelbase*c.frontWeight;
+    const bodySlipAngle = Math.atan2(this.bodyLateralVelocity, Math.max(1.5, speed));
+    const isCountersteering = this.slip > 0.35 && ((this.input.steering * bodySlipAngle < -0.05) || (this.input.steering * this.yawRate < -0.10));
+    const maxPhysicalLock = Math.min(0.55, c.steering.maxAngleBySpeed[0][1]);
+    const countersteerLimit = lerp(baseLimit, maxPhysicalLock, clamp((this.slip - 0.35) * 1.8, 0, 1));
+    this.maxSteeringAngle = isCountersteering ? countersteerLimit : baseLimit;
+
+    const rackRate = isCountersteering 
+      ? Math.max(c.steering.response * 1.5, c.steering.returnRate)
+      : lerp(c.steering.response, c.steering.highwayResponse, clamp(speed/35, 0, 1));
     const u = this.input.steering;
     const linW = c.steering.linearWeight ?? 0.90;
     const powW = c.steering.powerWeight ?? 0.10;
@@ -123,7 +133,8 @@ export class VehiclePhysics {
     const brake = frontBrake+rearBrake;
     // Handbrake acts solely on rear wheels. At rest, it firmly holds the vehicle on slopes.
     // In motion, dynamic rear braking allows the rear to slip and preserve momentum.
-    const isStationary = speed < .5;
+    const totalSpeed = Math.hypot(this.speed, this.bodyLateralVelocity);
+    const isStationary = totalSpeed < .5;
     const handbrake = this.input.handbrake * (isStationary ? Math.min(c.brakes.handbrakeForce, normalLoad*this.grip) : Math.min(c.brakes.handbrakeForce*0.40, rearLoad*this.grip*0.70));
     const offRoad = Math.abs(this.offset)>ROAD_HALF+1.5 && !(Math.abs(this.s-station)<65 && this.offset>0);
     const drag = .5*1.225*c.dragArea*speed*speed;
@@ -144,31 +155,31 @@ export class VehiclePhysics {
     if (this.refueling) this.speed = 0;
     this.acceleration = damp(this.acceleration,(this.speed-oldSpeed)/dt,12,dt);
 
-    const lf = c.wheelbase*(1-c.frontWeight), lr = c.wheelbase*c.frontWeight;
-    const travelSign = this.speed<0?-1:1;
-    const denominator = Math.max(4.5,Math.abs(this.speed));
-    const frontSlip = this.steering*travelSign-Math.atan2(this.bodyLateralVelocity+lf*this.yawRate,denominator);
-    const rearSlip = -Math.atan2(this.bodyLateralVelocity-lr*this.yawRate,denominator);
+    const vFrontLat = -this.speed*Math.sin(this.steering) + (this.bodyLateralVelocity+lf*this.yawRate)*Math.cos(this.steering);
+    const vFrontLong = this.speed*Math.cos(this.steering) + (this.bodyLateralVelocity+lf*this.yawRate)*Math.sin(this.steering);
+    const frontSlip = -Math.atan2(vFrontLat, Math.max(2.0, Math.abs(vFrontLong)));
+
+    const vRearLat = this.bodyLateralVelocity-lr*this.yawRate;
+    const rearSlip = -Math.atan2(vRearLat, Math.max(2.0, Math.abs(this.speed)));
+
     const frontLong = Math.abs(frontDrive)+frontBrake;
     const rearLong = Math.abs(rearDrive)+rearBrake+handbrake;
     const frontCapacity = Math.max(.12,Math.sqrt(Math.max(0,1-Math.pow(frontLong/(frontLoad*this.grip),2))))*frontLoad*this.grip;
     const rearCapacity = Math.max(.12,Math.sqrt(Math.max(0,1-Math.pow(rearLong/(rearLoad*this.grip),2))))*rearLoad*this.grip*lerp(1,c.tires.handbrakeGrip,this.input.handbrake);
     const frontForce = frontCapacity*Math.tanh(c.tires.frontStiffness*frontSlip/frontCapacity);
     const rearForce = rearCapacity*Math.tanh(c.tires.rearStiffness*rearSlip/rearCapacity);
-    const blend = clamp((Math.abs(this.speed)-1)/3,0,1);
+    const blend = clamp((totalSpeed-1.0)/3.0,0,1);
     const yawAcceleration = (lf*frontForce-lr*rearForce)/c.yawInertia-c.steering.yawDamping*this.yawRate;
     const kinematicYaw = this.speed/c.wheelbase*Math.tan(this.steering);
     this.yawRate = lerp(damp(this.yawRate,kinematicYaw,9,dt),this.yawRate+yawAcceleration*dt,blend);
     const lateralAfterForces=this.bodyLateralVelocity+(frontForce+rearForce)/mass*dt;
-    // Rotate BOTH body-velocity components into the new heading. The former
-    // v -= yaw*u step omitted the matching u += yaw*v term and created energy
-    // indefinitely with W+Space. An exact rotation preserves kinetic energy.
+    // Rotate BOTH body-velocity components into the new heading. The exact rotation preserves kinetic energy.
     const turn=this.yawRate*dt,ct=Math.cos(turn),st=Math.sin(turn);
     const dynamicForward=this.speed*ct+lateralAfterForces*st;
     const dynamicSide=lateralAfterForces*ct-this.speed*st;
     this.bodyLateralVelocity=lerp(damp(this.bodyLateralVelocity,kinematicYaw*lr,9,dt),dynamicSide,blend);
     this.speed=lerp(this.speed,dynamicForward,blend);
-    if (Math.abs(this.speed)<.05) { this.yawRate=damp(this.yawRate,0,20,dt); this.bodyLateralVelocity=damp(this.bodyLateralVelocity,0,20,dt); }
+    if (totalSpeed<.05) { this.yawRate=damp(this.yawRate,0,20,dt); this.bodyLateralVelocity=damp(this.bodyLateralVelocity,0,20,dt); }
     this.lateralAcceleration = damp(this.lateralAcceleration,(frontForce+rearForce)/mass,10,dt);
     this.slip = damp(this.slip, clamp(Math.max(Math.abs(frontSlip),Math.abs(rearSlip))/.22,0,1),8,dt);
     const oldRoadHeading = this.road.heading(this.s);

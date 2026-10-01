@@ -38,10 +38,11 @@ export class VehicleAudioControls {
     this.roadGain = env*.14*Math.pow(finiteClamp(speed/45, 0, 1), .85);
     this.windGain = env*.11*Math.pow(finiteClamp((speed-12)/48, 0, 1), 1.6);
     // Braking alone never fabricates a squeal. Slip is the normalized tire signal.
-    this.skidGain = vol*.1*finiteClamp(speed/5, 0, 1)*Math.pow(finiteClamp((state.slip-.28)/.72, 0, 1), 1.3);
+    const scrub = finiteClamp((state.slip - .12) / .88, 0, 1);
+    this.skidGain = vol * .14 * finiteClamp(speed / 4, 0, 1) * Math.pow(scrub, 1.2);
     this.roadCutoff = 650 + Math.min(1300, speed*28);
     this.windCutoff = 900 + Math.min(2600, speed*40);
-    this.skidFrequency = 1600 + finiteClamp(state.slip, 0, 1)*700;
+    this.skidFrequency = 1400 + scrub * 900;
 
     this.weights.fill(0);
     const n = this.anchors.length;

@@ -15,10 +15,12 @@ export class AudioManager {
       this.rain=channel();this.pad=channel();this.thunderGain=channel();this.vehicle=new VehicleAudio(ctx,this.master,this.vehicleConfig);this.wind=this.vehicle.wind;
       const buffer=ctx.createBuffer(1,ctx.sampleRate*3,ctx.sampleRate),data=buffer.getChannelData(0);let brown=0;
       for(let i=0;i<data.length;i++){brown=(brown+(Math.random()*2-1)*.02)/1.02;data[i]=brown*3.5;}
+      const seam=Math.min(2048,Math.floor(data.length/8));
+      for(let i=0;i<seam;i++){const f=0.5*(1-Math.cos((i/seam)*Math.PI));const blended=data[data.length-seam+i]*(1-f)+data[i]*f;data[data.length-seam+i]=blended;data[i]=blended;}
       const noise=ctx.createBufferSource();noise.buffer=buffer;noise.loop=true;
       const rainFilter=ctx.createBiquadFilter();rainFilter.type='highpass';rainFilter.frequency.value=450;noise.connect(rainFilter).connect(this.rain);
-      const thunderFilter=ctx.createBiquadFilter();thunderFilter.type='lowpass';thunderFilter.frequency.value=140;noise.connect(thunderFilter).connect(this.thunderGain);noise.start();
-      for(const [i,f] of [110,164.81,220,261.63].entries()){const osc=ctx.createOscillator();osc.type='sine';osc.frequency.value=f;const g=ctx.createGain();g.gain.value=.035;osc.connect(g).connect(this.pad);const lfo=ctx.createOscillator();lfo.frequency.value=.055+i*.008;const lfoGain=ctx.createGain();lfoGain.gain.value=.018;lfo.connect(lfoGain).connect(g.gain);lfo.start();osc.start();}
+      const padFilter=ctx.createBiquadFilter();padFilter.type='lowpass';padFilter.frequency.value=320;padFilter.connect(this.pad);
+      for(const [i,f] of [110,164.81,220,261.63].entries()){const osc=ctx.createOscillator();osc.type='sine';osc.frequency.value=f;const g=ctx.createGain();g.gain.value=.006;osc.connect(g).connect(padFilter);const lfo=ctx.createOscillator();lfo.frequency.value=.04+i*.006;const lfoGain=ctx.createGain();lfoGain.gain.value=.003;lfo.connect(lfoGain).connect(g.gain);lfo.start();osc.start();}
       await ctx.resume();
     }catch{this.available=false;this.context=null;}
   }

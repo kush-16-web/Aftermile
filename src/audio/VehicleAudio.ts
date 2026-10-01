@@ -65,12 +65,16 @@ export class VehicleAudio {
       const white=Math.random()*2-1; a=.99765*a+white*.099046; b=.963*b+white*.2965164; c=.57*c+white*1.0526913;
       samples[i]=finiteClamp((a+b+c+white*.1848)*.06,-.45,.45);
     }
-    // A short wrap crossfade avoids a click in the procedural ambience loop.
-    const seam=Math.min(256,Math.floor(samples.length/4));
-    for(let i=0;i<seam;i++){const f=i/seam;samples[samples.length-seam+i]=samples[samples.length-seam+i]*(1-f)+samples[i]*f;}
+    // A smooth wrap crossfade avoids any click in the procedural ambience loop.
+    const seam=1024;
+    for(let i=0;i<seam;i++){
+      const f=0.5*(1-Math.cos((i/seam)*Math.PI));
+      const blended=samples[samples.length-seam+i]*(1-f)+samples[i]*f;
+      samples[samples.length-seam+i]=blended;
+      samples[i]=blended;
+    }
     this.noiseBytes=samples.byteLength;
     this.noise=context.createBufferSource(); this.noise.buffer=buffer; this.noise.loop=true;
-    this.noise.loopStart=seam/context.sampleRate;
     this.noise.connect(roadHighpass); this.noise.connect(windHighpass); this.noise.connect(this.skidFilter); this.noise.start();
     this.nodes.push(this.noise);
     this.ready=this.loadRecordings(profile.bands);
