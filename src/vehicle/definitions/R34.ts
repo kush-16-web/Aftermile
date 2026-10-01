@@ -19,13 +19,49 @@ export const R34Config: VehicleConfig = {
     reverseRatio: 3.28, maxSpeed: 73, frontDriveShare: .3,
     throttleResponse: 4.5, throttleRelease: 10, engineBraking: 420,
   },
+  /** =========================================================================
+   * KEYBOARD STEERING FEEL & SENSITIVITY CONFIGURATION
+   * =========================================================================
+   * Single source of truth for tuning keyboard steering response, ramp-in,
+   * return-to-center, and speed-sensitive steering angles.
+   */
   steering: {
-    maxAngleBySpeed: [[0,.59],[2.7778,.56],[8.3333,.30],[16.6667,.12],[27.7778,.044],[36.1111,.030],[44.4444,.022],[55.5556,.016],[73,.010]],
-    inputRate: 4.6, highwayInputRate: 3.6, returnRate: 3.6,
-    response: 14, highwayResponse: 12, yawDamping: .65,
+    /** Max road wheel angle by speed [m/s, radians].
+     * 0 km/h: 34.4°, 10 km/h: 32.1°, 30 km/h: 19.5°, 60 km/h: 9.2°, 100 km/h: 3.72°, 130 km/h: 2.52°, 160 km/h: 1.83°
+     */
+   maxAngleBySpeed: [
+      [0,       0.60],  // 0 km/h
+      [2.7778,  0.56],  // 10
+      [8.3333,  0.38],  // 30
+      [16.6667, 0.22],  // 60
+      [27.7778, 0.11],  // 100
+      [36.1111, 0.075], // 130
+      [44.4444, 0.055], // 160
+      [55.5556, 0.038], // 200
+      [73,      0.028], // 263
+    ],
+    /** Ramp-in speed (1/s): how quickly the digital key input rises to full demand. */
+    inputRate: 7.0,
+    /** Highway ramp-in speed (1/s): ramp-in rate at highway speeds for smooth transitions. */
+    highwayInputRate: 7.0,
+    /** Return-to-center speed (1/s): how quickly the rack snaps back to center on key release. */
+    returnRate: 13.5,
+    /** Steering rack mechanical response (1/s): low-speed and highway rack tracking speed. */
+    response: 26,
+    highwayResponse: 24,
+    /** High-speed yaw damping: stabilizes the chassis against high-speed fishtailing. */
+    yawDamping: 0.76,
+    /** Response curve shaping:
+     * linearWeight (0.0-1.0): immediate direct steering bite on initial key touch.
+     * powerWeight (0.0-1.0): progressive buildup on sustained key press.
+     * powerExponent: curve exponent for smooth progressive hold.
+     */
+    linearWeight: 0.92,
+    powerWeight: 0.08,
+    powerExponent: 1.5,
   },
-  tires: { grip: 1.02, frontStiffness: 94000, rearStiffness: 110000, handbrakeGrip: .56 },
-  brakes: { force: 15600, frontBias: .65, handbrakeForce: 4100, reverseDelay: .65 },
+  tires: { grip: 1.02, frontStiffness: 98000, rearStiffness: 112000, handbrakeGrip: .52 },
+  brakes: { force: 15600, frontBias: .65, handbrakeForce: 10500, reverseDelay: .65 },
   suspension: { stiffness: 31000, damping: 3300, rollStiffness: 120000, pitchStiffness: 165000, travel: .12 },
   dragArea: .71, rollingResistance: .014,
   camera: { distance: 7.6, height: 2.65, lookAhead: 6.8, closeDistance: 5.1, closeHeight: 1.95, hood: [0,1.02,-1.45], driver: [.32,1.14,0] },

@@ -11,14 +11,13 @@ export class VehicleInput {
     const demand = Number(keys.right) - Number(keys.left);
     const highway = clamp(Math.abs(speed) / 35, 0, 1);
     const rise = lerp(config.steering.inputRate, config.steering.highwayInputRate, highway);
-    // A continuous filter handles taps, held lock and reversals. Similar highway
-    // rise/release time constants keep equal A/D corrections balanced. Snapping
-    // across centre or unwinding one side faster introduces a heading bias.
-    this.steering = damp(this.steering,demand,demand===0?config.steering.returnRate:rise,dt);
-    if(demand===0&&Math.abs(this.steering)<1e-5)this.steering=0;
+    const isReversing = demand !== 0 && (demand * this.steering < 0);
+    const rate = demand === 0 ? config.steering.returnRate : (isReversing ? Math.max(rise * 2.5, config.steering.returnRate) : rise);
+    this.steering = damp(this.steering, demand, rate, dt);
+    if(demand===0&&Math.abs(this.steering)<1e-4)this.steering=0;
     this.throttle = damp(this.throttle, Number(keys.throttle), keys.throttle ? config.engine.throttleResponse : config.engine.throttleRelease, dt);
     this.brake = damp(this.brake, Number(keys.brake), 10, dt);
-    this.handbrake = damp(this.handbrake, Number(keys.handbrake), 9, dt);
+    this.handbrake = damp(this.handbrake, Number(keys.handbrake), 12, dt);
   }
   reset() { this.steering = this.throttle = this.brake = this.handbrake = 0; }
 }

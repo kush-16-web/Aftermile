@@ -18,6 +18,29 @@ export interface FuelConfig {
   refuelLitresPerSecond: number;
 }
 
+export interface SteeringConfig {
+  /** Direct front-axle steering limit: [speed in m/s, radians]. */
+  maxAngleBySpeed: [number, number][];
+  /** Digital-input ramp-in speed in inverse seconds (low speed and highway speed). */
+  inputRate: number;
+  highwayInputRate: number;
+  /** Steering return-to-center rate on key release in inverse seconds. */
+  returnRate: number;
+  /** Steering rack response in inverse seconds; never rotates the heading directly. */
+  response: number;
+  highwayResponse: number;
+  /** Yaw damping factor to stabilize high-speed highway tracking. */
+  yawDamping: number;
+  /** Keyboard sensitivity & curve shaping:
+   * linearWeight: initial direct response factor (0.0–1.0)
+   * powerWeight: progressive buildup factor (0.0–1.0)
+   * powerExponent: curve exponent for sustained hold (e.g. 1.5–2.0)
+   */
+  linearWeight: number;
+  powerWeight: number;
+  powerExponent: number;
+}
+
 /** Metres, kilograms, seconds, newtons and radians unless a field names its unit.
  * Model contract: Body; WheelMount0..3 containing Wheel0..3 and Caliper0..3.
  * Vehicle origin is the axle midpoint at road height; model forward is -Z.
@@ -33,14 +56,7 @@ export interface VehicleConfig {
     finalDrive: number; reverseRatio: number; maxSpeed: number; frontDriveShare: number;
     throttleResponse: number; throttleRelease: number; engineBraking: number;
   };
-  steering: {
-    /** Direct front-axle steering limit: [speed in m/s, radians]. */
-    maxAngleBySpeed: [number, number][];
-    /** Digital-input filter response in inverse seconds, independent of wheel angle. */
-    inputRate: number; highwayInputRate: number; returnRate: number;
-    /** Steering rack response in inverse seconds; never rotates the heading directly. */
-    response: number; highwayResponse: number; yawDamping: number;
-  };
+  steering: SteeringConfig;
   tires: { grip: number; frontStiffness: number; rearStiffness: number; handbrakeGrip: number };
   brakes: { force: number; frontBias: number; handbrakeForce: number; reverseDelay: number };
   suspension: { stiffness: number; damping: number; rollStiffness: number; pitchStiffness: number; travel: number };

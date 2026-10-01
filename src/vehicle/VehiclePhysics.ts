@@ -71,9 +71,13 @@ export class VehiclePhysics {
     // One inspectable road-wheel angle curve replaces the compounded authority
     // multiplier / lateral-acceleration / v² limits of the previous tune.
     this.maxSteeringAngle = this.steeringLimit(speed);
-    const rackRate = lerp(c.steering.response,c.steering.highwayResponse,clamp(speed/35,0,1));
-    const precisionInput=this.input.steering*Math.abs(this.input.steering);
-    this.steering = damp(this.steering,precisionInput*this.maxSteeringAngle,rackRate,dt);
+    const rackRate = lerp(c.steering.response, c.steering.highwayResponse, clamp(speed/35, 0, 1));
+    const u = this.input.steering;
+    const linW = c.steering.linearWeight ?? 0.90;
+    const powW = c.steering.powerWeight ?? 0.10;
+    const powExp = c.steering.powerExponent ?? 1.6;
+    const precisionInput = Math.sign(u) * (linW * Math.abs(u) + powW * Math.pow(Math.abs(u), powExp));
+    this.steering = damp(this.steering, precisionInput * this.maxSteeringAngle, rackRate, dt);
     const station = this.road.station(this.s-50);
     this.refueling = keys.refuel && Math.abs(this.s-station)<28 && this.offset>13 && this.offset<33 && speed<.6;
     if (this.refueling) this.fuelLevelLitres = Math.min(this.config.fuel.tankLitres, this.fuelLevelLitres+dt*this.config.fuel.refuelLitresPerSecond);
@@ -100,24 +104,27 @@ export class VehiclePhysics {
     const torqueShape = .72 + .28*Math.sin(Math.PI*clamp(this.rpm/c.engine.redlineRpm,0,1));
     const powerForce = c.engine.powerKw*1000*c.engine.efficiency/Math.max(6,speed);
     const torqueForce = c.engine.torque*torqueShape*actualRatio*c.engine.efficiency/c.wheelRadius;
-    // Parking-brake clutch interlock: W+Space can rev but cannot continually
-    // power the wheels against a locked rear axle. Moving slides keep inertia.
-    this.engineLoad=this.throttle*(this.shiftTimer>0?.35:1)*(1-this.input.handbrake);
+    // Parking-brake clutch interlock: W+Space revs at standstill without powering wheels.
+    // Sustained handbrake brings vehicle to rest; brief handbrake taps initiate slides.
+    this.engineLoad = this.throttle * (this.shiftTimer>0?.35:1) * (1-this.input.handbrake);
     const driveForce = Math.min(c.engine.maxDriveForce, powerForce, torqueForce)*this.engineLoad*(reversing?-1:1);
     const normalLoad = mass*g*Math.max(.2,Math.cos(this.surfacePitch)*Math.cos(this.surfaceRoll));
     const frontLoad = clamp(normalLoad*c.frontWeight-mass*this.acceleration*c.centerOfGravity/c.wheelbase,normalLoad*.25,normalLoad*.75);
     const rearLoad = normalLoad-frontLoad;
     // Bound each driven axle by its available normal force on the grade.
-    const frontDrive=clamp(driveForce*c.engine.frontDriveShare,-frontLoad*this.grip,frontLoad*this.grip);
-    const rearDrive=clamp(driveForce*(1-c.engine.frontDriveShare),-rearLoad*this.grip,rearLoad*this.grip);
+    const frontDrive = clamp(driveForce*c.engine.frontDriveShare,-frontLoad*this.grip,frontLoad*this.grip);
+    const rearDrive = clamp(driveForce*(1-c.engine.frontDriveShare),-rearLoad*this.grip,rearLoad*this.grip);
     const drive = frontDrive+rearDrive;
     const brakeDemand = this.brakeAmount*Math.min(c.brakes.force,normalLoad*this.grip);
     // Electronic brake distribution protects the unloaded rear axle. Reserve
     // lateral capacity for steering instead of hiding a spin by cutting lock.
-    const frontBrake=Math.min(brakeDemand*c.brakes.frontBias,frontLoad*this.grip*.90);
-    const rearBrake=Math.min(brakeDemand*(1-c.brakes.frontBias),rearLoad*this.grip*.80);
-    const brake=frontBrake+rearBrake;
-    const handbrake = this.input.handbrake*Math.min(c.brakes.handbrakeForce,rearLoad*this.grip);
+    const frontBrake = Math.min(brakeDemand*c.brakes.frontBias,frontLoad*this.grip*.90);
+    const rearBrake = Math.min(brakeDemand*(1-c.brakes.frontBias),rearLoad*this.grip*.80);
+    const brake = frontBrake+rearBrake;
+    // Handbrake acts solely on rear wheels. At rest, it firmly holds the vehicle on slopes.
+    // In motion, dynamic rear braking allows the rear to slip and preserve momentum.
+    const isStationary = speed < .5;
+    const handbrake = this.input.handbrake * (isStationary ? Math.min(c.brakes.handbrakeForce, normalLoad*this.grip) : Math.min(c.brakes.handbrakeForce*0.40, rearLoad*this.grip*0.70));
     const offRoad = Math.abs(this.offset)>ROAD_HALF+1.5 && !(Math.abs(this.s-station)<65 && this.offset>0);
     const drag = .5*1.225*c.dragArea*speed*speed;
     const resistance = normalLoad*(c.rollingResistance+(offRoad?.11:0));
@@ -128,7 +135,7 @@ export class VehiclePhysics {
     const oldSpeed = this.speed;
     // Friction may hold the car at rest against gravity; it must never launch
     // it in the opposite direction. Forward torque still works during rollback.
-    if (speed<.015 && Math.abs(appliedForce)<=resistanceForce) this.speed=0;
+    if (speed<.05 && Math.abs(appliedForce)<=resistanceForce) this.speed=0;
     else {
       const direction=Math.sign(oldSpeed)||Math.sign(appliedForce);
       this.speed=clamp(oldSpeed+(appliedForce-direction*resistanceForce)/mass*dt,-9,c.engine.maxSpeed);
