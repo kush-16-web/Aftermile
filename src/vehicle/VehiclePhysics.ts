@@ -191,11 +191,46 @@ export class VehiclePhysics {
     this.s = Math.max(0,this.s+(forwardTravel*Math.cos(this.heading)-sideTravel*Math.sin(this.heading))*dt/Math.hypot(1,this.road.slope(this.s)));
     this.heading -= this.road.heading(this.s)-oldRoadHeading;
     this.heading = Math.atan2(Math.sin(this.heading),Math.cos(this.heading));
-    const limit = (this.road.isBridge(this.s)||this.road.isTunnel(this.s)) ? ROAD_HALF-this.collisionExtents().halfWidth : 75;
-    if (Math.abs(this.offset)>limit) {
-      this.offset = Math.sign(this.offset)*limit;
-      this.bodyLateralVelocity *= .15; this.yawRate *= .25;
-      if (this.collisionTimer===0 && Math.abs(this.speed)>2) this.collide(damageEnabled,.35);
+    const halfW = this.collisionExtents().halfWidth;
+    const side = (this.offset >= 0 ? 1 : -1) as -1 | 1;
+    const hasBarrier = this.road.hasGuardrail(this.s, side);
+    const railBoundary = 8.85 - halfW;
+    const maxOffset = hasBarrier ? railBoundary : 75;
+
+    if (Math.abs(this.offset) > maxOffset) {
+      const vLat = this.lateralVelocity;
+      const vImpact = side * vLat;
+
+      if (hasBarrier) {
+        // Strict physical barrier constraint - no tunneling
+        this.offset = side * railBoundary;
+
+        if (vImpact > 0) {
+          if (vImpact < 2.2 && Math.abs(this.heading) < 0.22) {
+            // Shallow scrape: slides smoothly along barrier with drag and rail alignment
+            this.speed *= Math.max(0.82, 1.0 - 0.40 * dt);
+            this.lateralVelocity = 0;
+            this.bodyLateralVelocity = damp(this.bodyLateralVelocity, 0, 18, dt);
+            this.heading = damp(this.heading, 0, 14, dt);
+            if (this.collisionTimer === 0 && Math.abs(this.speed) > 3) this.collide(damageEnabled, 0.12);
+          } else {
+            // Angled collision: inelastic rebound, energy dissipation, yaw deflection
+            const restitution = 0.14;
+            this.bodyLateralVelocity = -side * Math.max(0.8, vImpact * restitution);
+            this.speed = clamp(this.speed * Math.max(0.35, 1.0 - vImpact * 0.07), -9, c.engine.maxSpeed);
+            const yawDeflect = -side * Math.sign(this.speed || 1) * clamp(vImpact * 0.42, 0.4, 2.8);
+            this.yawRate = damp(this.yawRate + yawDeflect, 0, 7, dt);
+            this.heading += -side * 0.04;
+            if (this.collisionTimer === 0 && Math.abs(this.speed) > 2) {
+              this.collide(damageEnabled, clamp(vImpact / 5, 0.25, 1.8));
+            }
+          }
+        }
+      } else {
+        this.offset = side * 75;
+        this.bodyLateralVelocity *= .15; this.yawRate *= .25;
+        if (this.collisionTimer === 0 && Math.abs(this.speed) > 2) this.collide(damageEnabled, .35);
+      }
     }
     const previousHeight=this.height;
     this.sampleSurface(); this.suspension(dt,(this.height-previousHeight)/dt);

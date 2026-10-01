@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { clamp, damp } from '../core/math.ts';
 import type { VehiclePhysics, VehiclePose } from './VehiclePhysics.ts';
 import type { VehicleConfig } from './VehicleConfig.ts';
-export const cameraNames=['Chase','Close chase','Hood','Roof','Scenic'];
+export const cameraNames = ['Chase', 'Close Chase', 'Hood', 'Cockpit'];
 
 export class CameraController {
   mode=0;target=new THREE.Vector3();look=new THREE.Vector3();initialized=false;orbit=0;drag=false;lastX=0;
@@ -32,18 +32,45 @@ export class CameraController {
     const wantedHeading=car.road.heading(pose.s)+pose.heading;
     if(!this.initialized)this.heading=wantedHeading;
     const error=Math.atan2(Math.sin(wantedHeading-this.heading),Math.cos(wantedHeading-this.heading));
-    this.heading+=error*(1-Math.exp(-dt*(this.mode<2?4.5:9)));
+    this.heading+=error*(1-Math.exp(-dt*(this.mode<2?4.5:10)));
     this.forward.set(Math.sin(this.heading),0,-Math.cos(this.heading));this.right.set(Math.cos(this.heading),0,Math.sin(this.heading));
     const speed=Math.abs(car.speed);
     let distance=c.distance+Math.min(1.8,speed*.035)+(reduced?0:clamp(car.acceleration*.075,-.3,.35)),height=c.height,lookAhead=c.lookAhead;
     if(this.mode===1){distance=c.closeDistance+Math.min(.8,speed*.018);height=c.closeHeight;lookAhead=9;}
     if(this.mode===2){distance=c.hood[2];height=c.hood[1];lookAhead=25;}
-    if(this.mode===3){distance=.15;height=1.8;lookAhead=22;}
     if(this.mode===4){distance=13;height=5.4;lookAhead=4;}
     if(menu){
       const angle=.72+Math.sin(time*.035)*.15;
       this.target.copy(this.position).addScaledVector(this.forward,-10*Math.cos(angle)).addScaledVector(this.right,10*Math.sin(angle));this.target.y+=2.6;
       this.desiredLook.copy(this.position).addScaledVector(this.right,-3.2);this.desiredLook.y+=1;
+    }else if(this.mode===3){
+      // Calibrated Stabilized Cockpit Driver Eye Camera (Right-hand drive Japanese R34 interior position)
+      // Filter out high-frequency suspension jitter while retaining subtle natural head inertia
+      const isOffRoad = Math.abs(car.offset) > 9.8;
+      const accelHeadTilt = clamp(car.acceleration * 0.02, -0.05, 0.04);
+      const steerLookAhead = (pose.steering || 0) * 1.6;
+      const roadVibe = isOffRoad ? (Math.sin(time * 28.0) * 0.012) : 0;
+
+      const driverX = (c.driver[0] || 0.34);
+      const driverY = (c.driver[1] || 1.08) - accelHeadTilt + roadVibe;
+      const driverZ = (c.driver[2] || -0.08) - accelHeadTilt * 1.2;
+
+      this.target.copy(this.position)
+        .addScaledVector(this.right, driverX)
+        .addScaledVector(this.forward, driverZ);
+      this.target.y += driverY;
+
+      // Stable apex look direction with road grade anticipation
+      this.desiredLook.copy(this.position)
+        .addScaledVector(this.forward, 32)
+        .addScaledVector(this.right, driverX + steerLookAhead);
+      this.desiredLook.y += driverY - 0.04 + Math.sin(pose.surfacePitch) * 32;
+    }else if(this.mode===2){
+      // Hood Camera: Mounted securely on hood center
+      this.target.copy(this.position).addScaledVector(this.forward, c.hood[2]);
+      this.target.y += c.hood[1];
+      this.desiredLook.copy(this.position).addScaledVector(this.forward, 35);
+      this.desiredLook.y += c.hood[1] + Math.sin(pose.surfacePitch) * 35;
     }else{
       if(!this.drag)this.orbit=damp(this.orbit,0,3,dt);
       const orbit=this.orbit+(this.mode===4?.7:0);
@@ -51,7 +78,7 @@ export class CameraController {
       this.target.y+=height-Math.sin(pose.surfacePitch)*distance;
       this.desiredLook.copy(this.position).addScaledVector(this.forward,lookAhead);this.desiredLook.y+=.85+Math.sin(pose.surfacePitch)*lookAhead;
     }
-    // Sample the camera path against the existing driving surface and tunnel shell.
+    // Sample the camera path against the existing driving surface and tunnel shell only for chase cams.
     if(this.mode!==2&&this.mode!==3){
       const anchor=this.position.clone();anchor.y+=1.6;
       for(let i=1;i<=12;i++){
@@ -66,21 +93,34 @@ export class CameraController {
     if(!this.initialized||this.camera.position.distanceTo(this.target)>300){
       this.camera.position.copy(this.target);this.look.copy(this.desiredLook);this.velocity.set(0,0,0);this.lookVelocity.set(0,0,0);this.initialized=true;
     }else{
-      // Translation feed-forward avoids a large speed-dependent lag; the springs
-      // still absorb steering, elevation, acceleration and camera-distance changes.
-      const dx=this.position.x-this.previousPosition.x,dy=this.position.y-this.previousPosition.y,dz=this.position.z-this.previousPosition.z;
-      this.camera.position.x+=dx*.92;this.camera.position.z+=dz*.92;this.camera.position.y+=dy*.65;
-      this.look.x+=dx;this.look.z+=dz;this.look.y+=dy*.8;
-      this.spring(this.camera.position,this.velocity,this.target,this.mode===2||this.mode===3?25:16-smoothing*7,dt);
-      this.spring(this.look,this.lookVelocity,this.desiredLook,12,dt);
+      if(this.mode===3){
+        // Cockpit Camera: Tight, comfortable human head stabilization
+        this.camera.position.copy(this.target);
+        this.spring(this.look,this.lookVelocity,this.desiredLook,18,dt);
+      }else if(this.mode===2){
+        // Hood Camera: Direct mount
+        this.camera.position.copy(this.target);
+        this.spring(this.look,this.lookVelocity,this.desiredLook,22,dt);
+      }else{
+        // Chase Cameras: Smooth following spring
+        const dx=this.position.x-this.previousPosition.x,dy=this.position.y-this.previousPosition.y,dz=this.position.z-this.previousPosition.z;
+        this.camera.position.x+=dx*.92;this.camera.position.z+=dz*.92;this.camera.position.y+=dy*.65;
+        this.look.x+=dx;this.look.z+=dz;this.look.y+=dy*.8;
+        this.spring(this.camera.position,this.velocity,this.target,16-smoothing*7,dt);
+        this.spring(this.look,this.lookVelocity,this.desiredLook,12,dt);
+      }
     }
-    const surface=this.surface(car,this.camera.position.x,this.camera.position.z,origin),floor=surface.height+.35;
-    if(this.camera.position.y<floor){this.camera.position.y=floor;this.velocity.y=Math.max(0,this.velocity.y);}
-    if(car.road.isTunnel(surface.s)){
-      this.camera.position.y=Math.min(this.camera.position.y,car.road.height(surface.s)+6.2);
-      if(Math.abs(surface.offset)>8.55){const p=car.road.point(surface.s,clamp(surface.offset,-8.55,8.55));this.camera.position.x=p.x;this.camera.position.z=p.z+origin;this.velocity.x=this.velocity.z=0;}
+    if(this.mode!==2&&this.mode!==3){
+      const surface=this.surface(car,this.camera.position.x,this.camera.position.z,origin),floor=surface.height+.35;
+      if(this.camera.position.y<floor){this.camera.position.y=floor;this.velocity.y=Math.max(0,this.velocity.y);}
+      if(car.road.isTunnel(surface.s)){
+        this.camera.position.y=Math.min(this.camera.position.y,car.road.height(surface.s)+6.2);
+        if(Math.abs(surface.offset)>8.55){const p=car.road.point(surface.s,clamp(surface.offset,-8.55,8.55));this.camera.position.x=p.x;this.camera.position.z=p.z+origin;this.velocity.x=this.velocity.z=0;}
+      }
     }
     this.previousPosition.copy(this.position);this.camera.lookAt(this.look);
-    this.camera.fov=damp(this.camera.fov,fov+(menu||reduced?0:Math.min(4,speed*.065)),3,dt);this.camera.updateProjectionMatrix();
+    // In Cockpit / FPP, keep FOV rock-solid (no speed-based pumping)
+    const targetFov = this.mode===3 ? fov : fov+(menu||reduced?0:Math.min(3.5,speed*.05));
+    this.camera.fov=damp(this.camera.fov,targetFov,4,dt);this.camera.updateProjectionMatrix();
   }
 }

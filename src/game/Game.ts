@@ -57,7 +57,7 @@ export class Game {
     this.cameras.mode=this.settings.data.camera;this.applyGraphics();this.world.update(this.car.s,true);
     this.input.onAction=key=>{
       if(key==='F2'&&import.meta.env.DEV){this.debug?.toggle();return;}
-      if(key==='Escape'){if(this.ui.modal.open)return;if(this.screen==='playing')this.pause();else if(this.screen==='paused')this.resume();return;}
+      if(key==='Escape'){if(this.ui.activeOverlay)return;if(this.screen==='playing')this.pause();else if(this.screen==='paused')this.resume();return;}
       if(this.screen!=='playing'||this.modalOpen)return;
       if(key==='KeyC')this.cycleCamera();if(key==='KeyR')this.recover();
       if(key==='KeyL')this.ui.toast('Headlights · '+this.hero.lights.toggle());
@@ -82,7 +82,7 @@ export class Game {
   menu(){this.persist();this.screen='menu';this.input.enabled=false;this.input.clear();this.audio.pause();this.ui.setScreen('menu');document.body.classList.remove('zen-hidden');}
   restart(){this.persist();this.car.reset(160);this.car.fuel=100;this.car.distance=0;this.car.cleanDistance=0;this.car.damage=0;this.lastSavedDistance=0;this.traffic.reset();this.effects.reset();this.world.rebuild(this.car.s);this.cameras.initialized=false;this.start(this.zen);}
   recover(){this.car.reset();if(this.car.fuel<5)this.car.fuel=8;this.car.damage=0;this.cameras.initialized=false;this.effects.reset();this.audio.chime();this.ui.toast('Back on the road. Take your time.');}
-  cycleCamera(){this.cameras.mode=(this.cameras.mode+1)%cameraNames.length;this.settings.data.camera=this.cameras.mode;this.settings.save();this.cameras.initialized=false;this.ui.toast(cameraNames[this.cameras.mode]+' camera');}
+  cycleCamera(){this.cameras.mode=(this.cameras.mode+1)%cameraNames.length;this.settings.data.camera=this.cameras.mode;this.settings.save();this.cameras.initialized=false;this.ui.showCameraBadge(cameraNames[this.cameras.mode]);this.ui.toast(cameraNames[this.cameras.mode]+' camera');}
   setHud(){document.body.classList.toggle('zen-hidden',this.hiddenHud);}
   setSetting(key:keyof SettingsData,value:unknown) {
     // Only controls with known types can mutate preferences.
@@ -127,25 +127,104 @@ export class Game {
     this.traffic.update(dt,this.time,this.car,origin,s.traffic*(this.zen&&s.zenLowTraffic?.25:1),this.sky.night,w.wet,false,false);
     const station=this.road.station(this.car.s-50);
     const pose=this.vehicle.render(moving?this.accumulator*120:1,origin,this.sky.night);this.position.copy(this.hero.group.position);
-    this.effects.update(dt,this.time,this.car,this.hero,this.camera);
+    this.effects.update(dt,this.time,this.car,this.hero,this.camera,w.wet,w.snow);
     this.cameras.update(dt,this.cinematicTime,this.car,pose,origin,this.screen==='menu',s.fov,s.smoothing,s.reducedMotion);
     const inTunnel=this.road.isTunnel(this.car.s);
     this.sky.update(moving?dt:0,this.cinematicTime,this.camera,this.position,w,s.timeMode,s.hour,this.weather.mode==='live'?this.weather.city?.timezone:undefined,s.reducedFlashes);
-    this.water.update(this.cinematicTime,this.position.z,this.sky.night,w.cloud,this.scene.fog as THREE.FogExp2);
-    this.life.update(this.time,this.car.s,origin);this.particles.update(dt,this.cinematicTime,this.position,w,s.particles,inTunnel);
-    this.world.materials.update(w.wet,w.snow,w.autumn,this.sky.night,s.reflections,signalState(this.time));this.season.snow.value=w.snow;this.season.autumn.value=w.autumn;
-    this.audio.update(this.vehicle.audioState(),w.wet,inTunnel,!moving,s);
+    const sunDir = this.sky.sun.position.clone().sub(this.position).normalize();
+    this.water.update(this.cinematicTime,this.position.z,this.sky.night,w.cloud,this.scene.fog as THREE.FogExp2,w.storm,this.sky.hour,sunDir);
+    this.life.update(this.time,this.car.s,origin,this.sky.night < 0.6,w.storm > 0.4 || w.wet > 0.7);
+    this.life.onBirdNearby = (pan: number) => {
+      if (this.screen === 'playing') this.audio.birdCall(0.04, pan);
+    };
+    this.particles.update(dt,this.cinematicTime,this.position,w,s.particles,inTunnel,this.car.speed,this.car.lateralVelocity,this.car.slip);
+    this.world.materials.update(w.wet,w.snow,w.autumn,this.sky.night,s.reflections,signalState(this.time),this.cinematicTime,w.wind);this.season.snow.value=w.snow;this.season.autumn.value=w.autumn;
+    const wWeights=this.road.weights(this.car.s);
+    const waterProximity=Math.max(0,Math.min(1,Math.max(wWeights.bridge*1.0,wWeights.coast*0.92,this.road.isBridge(this.car.s)?1.0:0)));
+    this.audio.update(this.vehicle.audioState(),w.wet,inTunnel,!moving,s,this.cameras.mode===3,waterProximity);
     const danger=Math.max(this.traffic.sense,this.car.collisionTimer>.6?.65:0);
     if(danger>.5&&this.lastSense<=0&&moving&&s.sense>0){this.audio.chime(true);this.lastSense=5;}this.lastSense-=dt;
     this.companion.update(dt,this.cinematicTime,danger,this.zen?100:this.car.fuel,this.weather.condition,this.car.cleanDistance,s.reducedMotion);
+    const region=this.road.region(this.car.s);
     if(this.frameNumber%4===0) {
-      const region=this.road.region(this.car.s);
-      this.ui.update({speed:this.car.speed,fuel:this.car.fuel,distance:this.car.distance,region:region.name,regionProgress:region.progress,nextStation:station-this.car.s,temperature:w.temperature,hour:this.sky.hour,condition:this.weather.condition,weatherStatus:this.weather.status,city:this.weather.mode==='live'?this.weather.city?.name||'LIVE WORLD':'',camera:this.cameras.mode,zen:this.zen,fps:this.fps,gear:this.car.speed<-.3?'R':this.car.speed>.3?String(this.car.gear):'N',refueling:this.car.refueling,canRefuel:Math.abs(this.car.s-station)<28&&this.car.offset>13&&this.car.offset<33&&Math.abs(this.car.speed)<.6,danger,damage:this.car.damage,clean:this.car.cleanDistance},dt*4);
+      const navCurve: { x: number; y: number; marker?: string }[] = [];
+      const currentHeading = this.road.heading(this.car.s);
+      const cosH = Math.cos(currentHeading);
+      const sinH = Math.sin(currentHeading);
+      const p0 = this.road.point(this.car.s, 0);
+
+      let navEvent: string | undefined;
+      for (let ds = 0; ds <= 350; ds += 25) {
+        const sampleS = this.car.s + ds;
+        const pSample = this.road.point(sampleS, 0);
+        const deltaX = pSample.x - p0.x;
+        const deltaZ = pSample.z - p0.z;
+        // Transform world delta into vehicle forward/lateral navigation coordinates
+        const localForward = -deltaZ * cosH + deltaX * sinH;
+        const localLateral = deltaX * cosH - (-deltaZ) * sinH;
+
+        let marker: string | undefined;
+        if (!navEvent && ds > 40) {
+          if (Math.abs(station - sampleS) < 30) {
+            marker = '⛽';
+            navEvent = `HORIZON SERVICE · ${Math.round(ds)}m`;
+          } else if (this.road.isBridge(sampleS)) {
+            marker = '▰';
+            navEvent = `BRIDGE · ${Math.round(ds)}m`;
+          } else if (this.road.isTunnel(sampleS)) {
+            marker = '▱';
+            navEvent = `TUNNEL · ${Math.round(ds)}m`;
+          } else if (Math.abs(this.road.bank(sampleS)) > 0.03) {
+            marker = '↱';
+            navEvent = `CURVE · ${Math.round(ds)}m`;
+          }
+        }
+        navCurve.push({ x: localLateral, y: ds, marker });
+      }
+
+      this.hero.updateCockpit({
+        speed: this.car.speed,
+        rpm: this.car.rpm,
+        gear: this.car.speed < -.3 ? 'R' : this.car.speed > .3 ? String(this.car.gear) : 'N',
+        distance: this.car.distance,
+        region: region.name,
+        navCurve,
+        navEvent,
+        night: this.sky.night,
+      }, dt * 4);
+
+      this.ui.update({
+        speed: this.car.speed,
+        gear: this.car.speed < -.3 ? 'R' : this.car.speed > .3 ? String(this.car.gear) : 'N',
+        rpm: this.car.rpm,
+        fuel: this.car.fuel,
+        distance: this.car.distance,
+        region: region.name,
+        regionProgress: region.progress,
+        nextStation: station - this.car.s,
+        temperature: w.temperature,
+        hour: this.sky.hour,
+        condition: this.weather.condition,
+        weatherStatus: this.weather.status,
+        city: this.weather.mode === 'live' ? this.weather.city?.name || 'LIVE WORLD' : '',
+        camera: this.cameras.mode,
+        zen: this.zen,
+        fps: this.fps,
+        refueling: this.car.refueling,
+        canRefuel: Math.abs(this.car.s - station) < 28 && this.car.offset > 13 && this.car.offset < 33 && Math.abs(this.car.speed) < .6,
+        danger,
+        damage: this.car.damage,
+        clean: this.car.cleanDistance,
+        navCurve,
+        navEvent,
+      }, dt * 4);
       this.debug?.update();
       if(this.lastRegion&&this.lastRegion!==region.name&&moving)this.ui.toast('Entering '+region.name);this.lastRegion=region.name;
     }
-    // Only nearby chunks need dynamic shadows; far detail stays instanced.
-    if(this.frameNumber%30===1)for(const chunk of this.world.chunks.values())chunk.group.traverse(o=>{if(o instanceof THREE.InstancedMesh)o.castShadow=Math.abs(chunk.start-this.car.s)<240&&o.geometry!==this.world.materials.grassShape;});
+    // Render live mirrors only in Cockpit mode (time-sliced for browser performance)
+    if (this.cameras.mode === 3) {
+      this.hero.renderMirrors(this.renderer, this.scene, this.frameNumber);
+    }
     this.renderer.info.reset();this.composer.render();this.saveTimer+=dt;if(this.saveTimer>15){this.persist();this.saveTimer=0;}
   }
 }

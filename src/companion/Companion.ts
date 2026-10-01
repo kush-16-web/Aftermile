@@ -1,24 +1,114 @@
 import { damp } from '../core/math.ts';
+
 export class Companion {
-  context:CanvasRenderingContext2D;x=46;y=36;mood='curious';timer=0;messageTimer=0;
-  constructor(public canvas:HTMLCanvasElement) {canvas.width=176;canvas.height=128;this.context=canvas.getContext('2d')!;}
-  update(dt:number,time:number,danger:number,fuel:number,weather:string,clean:number,reduced:boolean) {
-    this.mood=danger>.2?'alert':fuel<18?'concerned':clean>1000?'content':weather==='storm'||weather==='snow'?'watchful':'curious';
-    const ctx=this.context;ctx.clearRect(0,0,176,128);ctx.save();ctx.scale(2,2);
-    const crawl=reduced?0:Math.sin(time*.24)*12;
-    this.x=damp(this.x,44+crawl,2,dt);this.y=damp(this.y,30+(reduced?0:Math.sin(time*.48)*7),2,dt);
-    const alert=danger>.2,color=alert?'#f1727c':'#81bdc3';
-    ctx.strokeStyle='rgba(138,171,182,.2)';ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(44,0);ctx.lineTo(this.x,this.y-5);ctx.stroke();
-    ctx.translate(this.x,this.y);ctx.rotate(reduced?0:Math.sin(time*.4)*.12);
-    ctx.lineCap='round';ctx.strokeStyle=color;ctx.lineWidth=1.4;
-    for(const side of [-1,1])for(let i=0;i<4;i++) {
-      const phase=reduced?0:Math.sin(time*(alert?9:3)+i*1.4+side)*1.7;
-      ctx.beginPath();ctx.moveTo(side*3,(i-1.5)*2.3);ctx.lineTo(side*(9+Math.abs(i-1.5)),(i-1.5)*5+phase);ctx.lineTo(side*(13+Math.abs(i-1.5)),(i-1.5)*7+phase+3);ctx.stroke();
+  context: CanvasRenderingContext2D;
+  pulse = 0;
+  sweepAngle = 0;
+  dangerLevel = 0;
+  statusText = 'CLEAR';
+
+  constructor(public canvas: HTMLCanvasElement) {
+    canvas.width = 160;
+    canvas.height = 100;
+    this.context = canvas.getContext('2d')!;
+  }
+
+  update(dt: number, time: number, danger: number, fuel: number, weather: string, clean: number, reduced: boolean) {
+    this.dangerLevel = damp(this.dangerLevel, danger, 4, dt);
+    this.sweepAngle = (this.sweepAngle + dt * (danger > 0.2 ? 4.5 : 2.0)) % (Math.PI * 2);
+    this.pulse = (this.pulse + dt * (danger > 0.2 ? 6.0 : 1.5)) % (Math.PI * 2);
+
+    const ctx = this.context;
+    ctx.clearRect(0, 0, 160, 100);
+
+    const cx = 80;
+    const cy = 48;
+    const radius = 34;
+
+    const isAlert = this.dangerLevel > 0.25;
+    const primaryColor = isAlert ? '#f1727c' : '#88bec4';
+    const subtleColor = isAlert ? 'rgba(241, 114, 124, 0.25)' : 'rgba(136, 190, 196, 0.2)';
+    const ringPulse = Math.sin(this.pulse) * 0.5 + 0.5;
+
+    // Background circular radar grid
+    ctx.save();
+    ctx.lineWidth = 1;
+
+    // Outer horizon arc
+    ctx.strokeStyle = subtleColor;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner concentric ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 0.55, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Crosshairs
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    ctx.moveTo(cx - radius - 6, cy);
+    ctx.lineTo(cx + radius + 6, cy);
+    ctx.moveTo(cx, cy - radius - 6);
+    ctx.lineTo(cx, cy + radius + 6);
+    ctx.stroke();
+
+    // Sweeping radar beam
+    if (!reduced) {
+      const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, radius);
+      grad.addColorStop(0, primaryColor);
+      grad.addColorStop(1, 'transparent');
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, radius, this.sweepAngle - 0.4, this.sweepAngle);
+      ctx.closePath();
+      ctx.fillStyle = isAlert ? 'rgba(241, 114, 124, 0.18)' : 'rgba(136, 190, 196, 0.12)';
+      ctx.fill();
+      ctx.restore();
     }
-    ctx.fillStyle='#aa354c';ctx.beginPath();ctx.ellipse(0,-2,4.5,6,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#354853';ctx.beginPath();ctx.ellipse(0,4,4,3.7,0,0,Math.PI*2);ctx.fill();
-    if(reduced||time%5<4.8){ctx.fillStyle=alert?'#ffc4c4':'#cbf7f4';ctx.beginPath();ctx.arc(-1.65,5,1.05,0,7);ctx.arc(1.65,5,1.05,0,7);ctx.fill();}
-    if(alert){ctx.globalAlpha=danger;ctx.strokeStyle=color;ctx.lineWidth=.8;for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(0,0,18+i*4,Math.PI*1.1,Math.PI*1.9);ctx.stroke();}}
+
+    // Danger / Proximity pulse rings
+    if (isAlert) {
+      ctx.strokeStyle = `rgba(241, 114, 124, ${0.4 + ringPulse * 0.5})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * (0.7 + ringPulse * 0.45), 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Flashing alert chevrons
+      ctx.fillStyle = '#f1727c';
+      ctx.font = '600 9px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('PROXIMITY ALERT', cx, cy + radius + 18);
+    } else {
+      // Normal state indicator
+      ctx.fillStyle = 'rgba(180, 205, 215, 0.65)';
+      ctx.font = '600 8px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      const label = weather === 'snow' ? 'SURFACE: ICY' : weather === 'storm' ? 'SURFACE: WET' : fuel < 20 ? 'FUEL LOW' : 'ROAD: OPTIMAL';
+      ctx.fillText(label, cx, cy + radius + 18);
+    }
+
+    // Center focal point (car beacon)
+    ctx.fillStyle = primaryColor;
+    ctx.beginPath();
+    ctx.arc(cx, cy, isAlert ? 3.5 : 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Road lane guides (forward perspective preview)
+    ctx.strokeStyle = primaryColor;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 10, cy + 18);
+    ctx.lineTo(cx - 3, cy + 4);
+    ctx.moveTo(cx + 10, cy + 18);
+    ctx.lineTo(cx + 3, cy + 4);
+    ctx.stroke();
+
     ctx.restore();
   }
 }
+

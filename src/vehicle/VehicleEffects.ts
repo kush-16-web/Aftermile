@@ -2,14 +2,15 @@ import * as THREE from 'three';
 import type { VehiclePhysics } from './VehiclePhysics.ts';
 import type { PlayerVehicleModel } from './PlayerVehicleModel.ts';
 
-const MAX_SKID_QUADS = 800;
-const TIRE_WIDTH = 0.24;
-const MAX_SMOKE_PARTICLES = 120;
+const MAX_SKID_QUADS = 1000;
+const TIRE_WIDTH = 0.22;
+const MAX_SMOKE_PARTICLES = 140;
 
-interface SkidNode {
+interface TrackNode {
   x: number; y: number; z: number;
   nx: number; ny: number; nz: number;
   alpha: number;
+  r: number; g: number; b: number;
   time: number;
 }
 
@@ -21,24 +22,25 @@ interface SmokeParticle {
   alpha: number; maxAlpha: number;
   life: number; maxLife: number;
   active: boolean;
+  isDust: boolean;
 }
 
 export class VehicleEffects {
   readonly group = new THREE.Group();
   
-  // Skid Mark Mesh & Geometry
-  private skidGeom = new THREE.BufferGeometry();
-  private skidPositions = new Float32Array(MAX_SKID_QUADS * 4 * 3);
-  private skidUvs = new Float32Array(MAX_SKID_QUADS * 4 * 2);
-  private skidColors = new Float32Array(MAX_SKID_QUADS * 4 * 4);
-  private skidIndices = new Uint16Array(MAX_SKID_QUADS * 6);
-  private skidMesh: THREE.Mesh;
-  private skidTexture: THREE.CanvasTexture;
-  private skidNodes: SkidNode[][] = [[], [], [], []]; // 4 wheels
+  // Continuous 4-Wheel Surface Tyre Track Ribbons
+  private trackGeom = new THREE.BufferGeometry();
+  private trackPositions = new Float32Array(MAX_SKID_QUADS * 4 * 3);
+  private trackUvs = new Float32Array(MAX_SKID_QUADS * 4 * 2);
+  private trackColors = new Float32Array(MAX_SKID_QUADS * 4 * 4);
+  private trackIndices = new Uint16Array(MAX_SKID_QUADS * 6);
+  private trackMesh: THREE.Mesh;
+  private trackTexture: THREE.CanvasTexture;
+  private trackNodes: TrackNode[][] = [[], [], [], []]; // 4 wheels: FL, FR, RL, RR
   private lastTireWorld: THREE.Vector3[] = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
   private lastContact = [false, false, false, false];
 
-  // Tyre Smoke Particle System
+  // Tyre Smoke & Surface Dust Particle System
   private smokeParticles: SmokeParticle[] = [];
   private smokeMesh: THREE.InstancedMesh;
   private smokeTexture: THREE.CanvasTexture;
@@ -50,56 +52,44 @@ export class VehicleEffects {
     this.group.name = 'VehicleEffects';
     this.scene.add(this.group);
 
-    // 1. Procedural Realistic Tire Tread Rubber Texture
-    const skidCanvas = document.createElement('canvas');
-    skidCanvas.width = 64;
-    skidCanvas.height = 256;
-    const sCtx = skidCanvas.getContext('2d')!;
-    // Dual-shoulder tire contact profile with feathered outer edges
+    // 1. Procedural Surface Track Tread Profile (Dual-shoulder tire contact profile)
+    const trackCanvas = document.createElement('canvas');
+    trackCanvas.width = 64;
+    trackCanvas.height = 256;
+    const sCtx = trackCanvas.getContext('2d')!;
     const sGrad = sCtx.createLinearGradient(0, 0, 64, 0);
-    sGrad.addColorStop(0, 'rgba(15, 15, 18, 0)');
-    sGrad.addColorStop(0.12, 'rgba(15, 15, 18, 0.9)');
-    sGrad.addColorStop(0.35, 'rgba(25, 25, 30, 0.75)');
-    sGrad.addColorStop(0.50, 'rgba(18, 18, 22, 0.65)');
-    sGrad.addColorStop(0.65, 'rgba(25, 25, 30, 0.75)');
-    sGrad.addColorStop(0.88, 'rgba(15, 15, 18, 0.9)');
-    sGrad.addColorStop(1, 'rgba(15, 15, 18, 0)');
+    sGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+    sGrad.addColorStop(0.12, 'rgba(255, 255, 255, 0.95)');
+    sGrad.addColorStop(0.35, 'rgba(255, 255, 255, 0.75)');
+    sGrad.addColorStop(0.50, 'rgba(255, 255, 255, 0.65)');
+    sGrad.addColorStop(0.65, 'rgba(255, 255, 255, 0.75)');
+    sGrad.addColorStop(0.88, 'rgba(255, 255, 255, 0.95)');
+    sGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
     sCtx.fillStyle = sGrad;
     sCtx.fillRect(0, 0, 64, 256);
     
-    // Add subtle procedural asphalt/tread micro-grain
-    const imgData = sCtx.getImageData(0, 0, 64, 256);
-    for (let i = 0; i < imgData.data.length; i += 4) {
-      if (imgData.data[i + 3] > 0) {
-        const noise = (Math.random() * 2 - 1) * 18;
-        imgData.data[i] = Math.max(8, Math.min(40, imgData.data[i] + noise));
-        imgData.data[i + 1] = Math.max(8, Math.min(40, imgData.data[i + 1] + noise));
-        imgData.data[i + 2] = Math.max(10, Math.min(45, imgData.data[i + 2] + noise));
-      }
-    }
-    sCtx.putImageData(imgData, 0, 0);
-    this.skidTexture = new THREE.CanvasTexture(skidCanvas);
-    this.skidTexture.wrapS = THREE.ClampToEdgeWrapping;
-    this.skidTexture.wrapT = THREE.RepeatWrapping;
+    this.trackTexture = new THREE.CanvasTexture(trackCanvas);
+    this.trackTexture.wrapS = THREE.ClampToEdgeWrapping;
+    this.trackTexture.wrapT = THREE.RepeatWrapping;
 
-    // Build Skid Mesh Indexing
+    // Build Track Mesh Indexing
     for (let i = 0; i < MAX_SKID_QUADS; i++) {
       const base = i * 4;
       const idx = i * 6;
-      this.skidIndices[idx] = base;
-      this.skidIndices[idx + 1] = base + 1;
-      this.skidIndices[idx + 2] = base + 2;
-      this.skidIndices[idx + 3] = base + 2;
-      this.skidIndices[idx + 4] = base + 1;
-      this.skidIndices[idx + 5] = base + 3;
+      this.trackIndices[idx] = base;
+      this.trackIndices[idx + 1] = base + 1;
+      this.trackIndices[idx + 2] = base + 2;
+      this.trackIndices[idx + 3] = base + 2;
+      this.trackIndices[idx + 4] = base + 1;
+      this.trackIndices[idx + 5] = base + 3;
     }
-    this.skidGeom.setIndex(new THREE.BufferAttribute(this.skidIndices, 1));
-    this.skidGeom.setAttribute('position', new THREE.BufferAttribute(this.skidPositions, 3));
-    this.skidGeom.setAttribute('uv', new THREE.BufferAttribute(this.skidUvs, 2));
-    this.skidGeom.setAttribute('color', new THREE.BufferAttribute(this.skidColors, 4));
+    this.trackGeom.setIndex(new THREE.BufferAttribute(this.trackIndices, 1));
+    this.trackGeom.setAttribute('position', new THREE.BufferAttribute(this.trackPositions, 3));
+    this.trackGeom.setAttribute('uv', new THREE.BufferAttribute(this.trackUvs, 2));
+    this.trackGeom.setAttribute('color', new THREE.BufferAttribute(this.trackColors, 4));
 
-    const skidMat = new THREE.MeshBasicMaterial({
-      map: this.skidTexture,
+    const trackMat = new THREE.MeshBasicMaterial({
+      map: this.trackTexture,
       vertexColors: true,
       transparent: true,
       depthWrite: false,
@@ -108,11 +98,11 @@ export class VehicleEffects {
       polygonOffsetUnits: -3,
       side: THREE.DoubleSide,
     });
-    this.skidMesh = new THREE.Mesh(this.skidGeom, skidMat);
-    this.skidMesh.frustumCulled = false;
-    this.group.add(this.skidMesh);
+    this.trackMesh = new THREE.Mesh(this.trackGeom, trackMat);
+    this.trackMesh.frustumCulled = false;
+    this.group.add(this.trackMesh);
 
-    // 2. Procedural Organic Soft Smoke Particle Texture
+    // 2. Procedural Soft Smoke & Dust Texture
     const smokeCanvas = document.createElement('canvas');
     smokeCanvas.width = 128;
     smokeCanvas.height = 128;
@@ -125,7 +115,6 @@ export class VehicleEffects {
     smCtx.fillStyle = smGrad;
     smCtx.fillRect(0, 0, 128, 128);
 
-    // Soft organic puffs
     for (let p = 0; p < 8; p++) {
       const px = 64 + (Math.random() * 2 - 1) * 20;
       const py = 64 + (Math.random() * 2 - 1) * 20;
@@ -140,7 +129,7 @@ export class VehicleEffects {
     }
     this.smokeTexture = new THREE.CanvasTexture(smokeCanvas);
 
-    // Smoke Instanced Mesh
+    // Smoke/Dust Instanced Mesh
     const smokeGeom = new THREE.PlaneGeometry(1, 1);
     const smokeMat = new THREE.MeshBasicMaterial({
       map: this.smokeTexture,
@@ -163,6 +152,7 @@ export class VehicleEffects {
         alpha: 0, maxAlpha: 0.35,
         life: 0, maxLife: 1.2,
         active: false,
+        isDust: false,
       });
       this.smokeDummy.position.set(0, -9999, 0);
       this.smokeDummy.updateMatrix();
@@ -171,36 +161,68 @@ export class VehicleEffects {
     this.smokeMesh.instanceMatrix.needsUpdate = true;
   }
 
-  update(dt: number, time: number, physics: VehiclePhysics, model: PlayerVehicleModel, camera: THREE.Camera) {
+  update(
+    dt: number,
+    time: number,
+    physics: VehiclePhysics,
+    model: PlayerVehicleModel,
+    camera: THREE.Camera,
+    wet = 0,
+    snow = 0
+  ) {
     const totalSpeed = Math.hypot(physics.speed, physics.bodyLateralVelocity);
+    const isMoving = totalSpeed > 0.8;
     const isSlipping = physics.slip > 0.18 && totalSpeed > 1.8;
     const isAirborne = Math.abs(physics.heave) > 0.28;
 
-    // 1. Process Skid Mark Ribbons
+    const station = physics.road.station(physics.s - 50);
+    const isGasStation = Math.abs(physics.s - station) < 65 && physics.offset > 0;
+    const isOffRoad = Math.abs(physics.offset) > 9.8 && !isGasStation;
+
+    // 1. Process 4-Wheel Surface Tracks
     let quadWriteIndex = 0;
 
     for (let w = 0; w < 4; w++) {
       const isRear = w >= 2;
-      const wheelSlipping = isSlipping && (isRear || physics.slip > 0.40);
       const pivot = model.steer[w];
 
-      if (pivot && model.ready) {
+      if (pivot && model.ready && !isAirborne && isMoving) {
         const worldPos = new THREE.Vector3();
         pivot.getWorldPosition(worldPos);
-        worldPos.y += 0.025; // Subtle elevation above road surface
+        worldPos.y += 0.025; // Surface elevation
 
-        if (wheelSlipping && !isAirborne) {
+        let shouldTrack = false;
+        let trackR = 0.08, trackG = 0.08, trackB = 0.09; // Rubber black default
+        let alpha = 0;
+
+        // Surface tracks strictly require meaningful tire slip (drift, burnout, locked wheel), never ordinary rolling
+        if (physics.slip > 0.28 && isMoving) {
+          if (snow > 0.15) {
+            // SNOW: subtle snow displacement track during wheelspin / slide
+            shouldTrack = true;
+            trackR = 0.78; trackG = 0.82; trackB = 0.88;
+            alpha = THREE.MathUtils.clamp((physics.slip - 0.25) * 0.8, 0.15, 0.60);
+          } else if (isOffRoad) {
+            // DIRT / GRASS: pressed earth during wheelspin or slide
+            shouldTrack = true;
+            trackR = 0.28; trackG = 0.22; trackB = 0.16;
+            alpha = THREE.MathUtils.clamp((physics.slip - 0.22) * 0.9, 0.20, 0.75);
+          } else if (wet < 0.6 && (isRear || physics.slip > 0.42)) {
+            // DRY ASPHALT RUBBER SKID MARKS: during real tire slip / burnout / drift
+            shouldTrack = true;
+            trackR = 0.06; trackG = 0.06; trackB = 0.07;
+            alpha = THREE.MathUtils.clamp((physics.slip - 0.25) / 0.50, 0.20, 0.90) * (1.0 - wet * 0.5);
+          }
+        }
+
+        if (shouldTrack) {
           const dist = worldPos.distanceTo(this.lastTireWorld[w]);
-          if (dist > 0.28 || !this.lastContact[w]) {
-            // Perpendicular vector along the vehicle heading
+          if (dist > 0.26 || !this.lastContact[w]) {
             const heading = -physics.road.heading(physics.s) - physics.heading;
             const perpX = Math.cos(heading);
             const perpZ = -Math.sin(heading);
-            
-            // Progressive rubber density based on slip intensity
-            const alpha = THREE.MathUtils.clamp((physics.slip - 0.16) / 0.55, 0.20, 0.92);
 
-            this.skidNodes[w].push({
+            this.trackNodes[w].push({
               x: worldPos.x,
               y: worldPos.y,
               z: worldPos.z,
@@ -208,29 +230,39 @@ export class VehicleEffects {
               ny: 1,
               nz: perpZ,
               alpha,
+              r: trackR,
+              g: trackG,
+              b: trackB,
               time,
             });
 
             this.lastTireWorld[w].copy(worldPos);
             this.lastContact[w] = true;
 
-            // Spawn smoke on moderate to heavy slip
-            if (physics.slip > 0.28 && (isRear || physics.slip > 0.55) && Math.random() < 0.75) {
-              this.spawnSmoke(worldPos, physics);
+            // Spawn smoke on dry asphalt slip
+            if (!isOffRoad && snow < 0.1 && physics.slip > 0.28 && (isRear || physics.slip > 0.55) && Math.random() < 0.75 && wet < 0.3) {
+              this.spawnSmoke(worldPos, physics, false);
             }
           }
         } else {
           this.lastContact[w] = false;
         }
+
+        // Dust disturbance on dirt/grass
+        if (isOffRoad && totalSpeed > 2.5 && (isSlipping || totalSpeed > 8.0) && Math.random() < 0.45) {
+          this.spawnSmoke(worldPos, physics, true);
+        }
+      } else {
+        this.lastContact[w] = false;
       }
 
-      // Age and trim skid nodes (fade over 16 seconds)
-      const nodes = this.skidNodes[w];
+      // Age and trim track nodes (fade over 16 seconds)
+      const nodes = this.trackNodes[w];
       while (nodes.length > 0 && (time - nodes[0].time > 16 || nodes.length > MAX_SKID_QUADS / 4)) {
         nodes.shift();
       }
 
-      // Construct seamless quad ribbon
+      // Construct quad ribbons
       for (let p = 0; p < nodes.length - 1 && quadWriteIndex < MAX_SKID_QUADS; p++) {
         const n0 = nodes[p];
         const n1 = nodes[p + 1];
@@ -247,65 +279,65 @@ export class VehicleEffects {
         const colIdx = quadWriteIndex * 16;
 
         // V0 (n0 left)
-        this.skidPositions[posIdx] = n0.x - n0.nx * hw;
-        this.skidPositions[posIdx + 1] = n0.y;
-        this.skidPositions[posIdx + 2] = n0.z - n0.nz * hw;
+        this.trackPositions[posIdx] = n0.x - n0.nx * hw;
+        this.trackPositions[posIdx + 1] = n0.y;
+        this.trackPositions[posIdx + 2] = n0.z - n0.nz * hw;
 
         // V1 (n0 right)
-        this.skidPositions[posIdx + 3] = n0.x + n0.nx * hw;
-        this.skidPositions[posIdx + 4] = n0.y;
-        this.skidPositions[posIdx + 5] = n0.z + n0.nz * hw;
+        this.trackPositions[posIdx + 3] = n0.x + n0.nx * hw;
+        this.trackPositions[posIdx + 4] = n0.y;
+        this.trackPositions[posIdx + 5] = n0.z + n0.nz * hw;
 
         // V2 (n1 left)
-        this.skidPositions[posIdx + 6] = n1.x - n1.nx * hw;
-        this.skidPositions[posIdx + 7] = n1.y;
-        this.skidPositions[posIdx + 8] = n1.z - n1.nz * hw;
+        this.trackPositions[posIdx + 6] = n1.x - n1.nx * hw;
+        this.trackPositions[posIdx + 7] = n1.y;
+        this.trackPositions[posIdx + 8] = n1.z - n1.nz * hw;
 
         // V3 (n1 right)
-        this.skidPositions[posIdx + 9] = n1.x + n1.nx * hw;
-        this.skidPositions[posIdx + 10] = n1.y;
-        this.skidPositions[posIdx + 11] = n1.z + n1.nz * hw;
+        this.trackPositions[posIdx + 9] = n1.x + n1.nx * hw;
+        this.trackPositions[posIdx + 10] = n1.y;
+        this.trackPositions[posIdx + 11] = n1.z + n1.nz * hw;
 
         // UVs
-        this.skidUvs[uvIdx] = 0; this.skidUvs[uvIdx + 1] = 0;
-        this.skidUvs[uvIdx + 2] = 1; this.skidUvs[uvIdx + 3] = 0;
-        this.skidUvs[uvIdx + 4] = 0; this.skidUvs[uvIdx + 5] = 1;
-        this.skidUvs[uvIdx + 6] = 1; this.skidUvs[uvIdx + 7] = 1;
+        this.trackUvs[uvIdx] = 0; this.trackUvs[uvIdx + 1] = 0;
+        this.trackUvs[uvIdx + 2] = 1; this.trackUvs[uvIdx + 3] = 0;
+        this.trackUvs[uvIdx + 4] = 0; this.trackUvs[uvIdx + 5] = 1;
+        this.trackUvs[uvIdx + 6] = 1; this.trackUvs[uvIdx + 7] = 1;
 
-        // Colors with smooth alpha
+        // Surface Colors with alpha
         for (let v = 0; v < 2; v++) {
           const c = colIdx + v * 4;
-          this.skidColors[c] = 0.95;
-          this.skidColors[c + 1] = 0.95;
-          this.skidColors[c + 2] = 0.95;
-          this.skidColors[c + 3] = a0;
+          this.trackColors[c] = n0.r;
+          this.trackColors[c + 1] = n0.g;
+          this.trackColors[c + 2] = n0.b;
+          this.trackColors[c + 3] = a0;
         }
         for (let v = 2; v < 4; v++) {
           const c = colIdx + v * 4;
-          this.skidColors[c] = 0.95;
-          this.skidColors[c + 1] = 0.95;
-          this.skidColors[c + 2] = 0.95;
-          this.skidColors[c + 3] = a1;
+          this.trackColors[c] = n1.r;
+          this.trackColors[c + 1] = n1.g;
+          this.trackColors[c + 2] = n1.b;
+          this.trackColors[c + 3] = a1;
         }
 
         quadWriteIndex++;
       }
     }
 
-    // Zero out unused quads in buffer
+    // Zero remaining
     for (let q = quadWriteIndex; q < MAX_SKID_QUADS; q++) {
       const posIdx = q * 12;
-      for (let k = 0; k < 12; k++) this.skidPositions[posIdx + k] = 0;
+      for (let k = 0; k < 12; k++) this.trackPositions[posIdx + k] = 0;
       const colIdx = q * 16;
-      for (let k = 0; k < 16; k++) this.skidColors[colIdx + k] = 0;
+      for (let k = 0; k < 16; k++) this.trackColors[colIdx + k] = 0;
     }
 
-    this.skidGeom.attributes.position.needsUpdate = true;
-    this.skidGeom.attributes.uv.needsUpdate = true;
-    this.skidGeom.attributes.color.needsUpdate = true;
-    this.skidGeom.setDrawRange(0, quadWriteIndex * 6);
+    this.trackGeom.attributes.position.needsUpdate = true;
+    this.trackGeom.attributes.uv.needsUpdate = true;
+    this.trackGeom.attributes.color.needsUpdate = true;
+    this.trackGeom.setDrawRange(0, quadWriteIndex * 6);
 
-    // 2. Update Tyre Smoke Particles
+    // 2. Update Tyre Smoke / Dust Particles
     this.smokeCamQuat.copy(camera.quaternion);
 
     for (let i = 0; i < MAX_SMOKE_PARTICLES; i++) {
@@ -330,13 +362,12 @@ export class VehicleEffects {
       p.y += p.vy * dt;
       p.z += p.vz * dt;
       p.rot += p.rotSpeed * dt;
-      p.vy += 0.35 * dt; // gentle thermal lift
-      p.vx *= (1 - 0.8 * dt); // air resistance
+      p.vy += (p.isDust ? 0.15 : 0.35) * dt;
+      p.vx *= (1 - 0.8 * dt);
       p.vz *= (1 - 0.8 * dt);
 
       const prog = p.life / p.maxLife;
       const size = THREE.MathUtils.lerp(p.size, p.maxSize, Math.pow(prog, 0.6));
-      // Smooth bell curve envelope: quick fade-in, long natural dissipation
       const alphaEnv = Math.sin(prog * Math.PI) * Math.pow(1 - prog, 0.4);
       const alpha = p.maxAlpha * alphaEnv;
 
@@ -350,27 +381,29 @@ export class VehicleEffects {
     this.smokeMesh.instanceMatrix.needsUpdate = true;
   }
 
-  private spawnSmoke(pos: THREE.Vector3, physics: VehiclePhysics) {
+  private spawnSmoke(pos: THREE.Vector3, physics: VehiclePhysics, isDust = false) {
     for (let i = 0; i < MAX_SMOKE_PARTICLES; i++) {
       const p = this.smokeParticles[i];
       if (!p.active) {
         p.active = true;
-        p.x = pos.x + (Math.random() * 2 - 1) * 0.18;
-        p.y = pos.y + 0.12;
-        p.z = pos.z + (Math.random() * 2 - 1) * 0.18;
+        p.isDust = isDust;
+        p.x = pos.x + (Math.random() * 2 - 1) * 0.2;
+        p.y = pos.y + 0.1;
+        p.z = pos.z + (Math.random() * 2 - 1) * 0.2;
         
-        // Initial velocity includes vehicle velocity transfer + tire fling
-        p.vx = -physics.lateralVelocity * 0.35 + (Math.random() * 2 - 1) * 0.6;
-        p.vy = 0.35 + Math.random() * 0.5;
+        p.vx = -physics.lateralVelocity * 0.35 + (Math.random() * 2 - 1) * (isDust ? 0.9 : 0.6);
+        p.vy = (isDust ? 0.5 : 0.35) + Math.random() * 0.6;
         p.vz = (Math.random() * 2 - 1) * 0.6;
         p.rot = Math.random() * Math.PI * 2;
         p.rotSpeed = (Math.random() * 2 - 1) * 1.5;
         
-        p.size = 0.35 + Math.random() * 0.25;
-        p.maxSize = 1.6 + Math.random() * 1.0;
-        p.maxAlpha = 0.22 + THREE.MathUtils.clamp(physics.slip * 0.25, 0, 0.25);
+        p.size = (isDust ? 0.45 : 0.35) + Math.random() * 0.25;
+        p.maxSize = (isDust ? 2.4 : 1.6) + Math.random() * 1.0;
+        p.maxAlpha = isDust
+          ? 0.35 + THREE.MathUtils.clamp(physics.slip * 0.3, 0, 0.3)
+          : 0.22 + THREE.MathUtils.clamp(physics.slip * 0.25, 0, 0.25);
         p.life = 0;
-        p.maxLife = 0.9 + Math.random() * 0.6;
+        p.maxLife = (isDust ? 0.75 : 0.9) + Math.random() * 0.6;
         break;
       }
     }
@@ -379,7 +412,7 @@ export class VehicleEffects {
   shiftOrigin(deltaZ: number) {
     for (let w = 0; w < 4; w++) {
       this.lastTireWorld[w].z += deltaZ;
-      for (const node of this.skidNodes[w]) {
+      for (const node of this.trackNodes[w]) {
         node.z += deltaZ;
       }
     }
@@ -390,23 +423,23 @@ export class VehicleEffects {
 
   reset() {
     for (let w = 0; w < 4; w++) {
-      this.skidNodes[w].length = 0;
+      this.trackNodes[w].length = 0;
       this.lastContact[w] = false;
     }
     for (const sm of this.smokeParticles) {
       sm.active = false;
     }
-    this.skidPositions.fill(0);
-    this.skidColors.fill(0);
-    this.skidGeom.attributes.position.needsUpdate = true;
-    this.skidGeom.attributes.color.needsUpdate = true;
-    this.skidGeom.setDrawRange(0, 0);
+    this.trackPositions.fill(0);
+    this.trackColors.fill(0);
+    this.trackGeom.attributes.position.needsUpdate = true;
+    this.trackGeom.attributes.color.needsUpdate = true;
+    this.trackGeom.setDrawRange(0, 0);
   }
 
   dispose() {
-    this.skidGeom.dispose();
-    (this.skidMesh.material as THREE.Material).dispose();
-    this.skidTexture.dispose();
+    this.trackGeom.dispose();
+    (this.trackMesh.material as THREE.Material).dispose();
+    this.trackTexture.dispose();
     this.smokeMesh.geometry.dispose();
     (this.smokeMesh.material as THREE.Material).dispose();
     this.smokeTexture.dispose();
