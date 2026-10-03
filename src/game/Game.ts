@@ -10,6 +10,8 @@ import { World } from '../world/World.ts';
 import { Water } from '../world/Water.ts';
 import { AmbientLife } from '../world/AmbientLife.ts';
 import { VehicleController } from '../vehicle/VehicleController.ts';
+import type { VehiclePhysics } from '../vehicle/VehiclePhysics.ts';
+import type { PlayerVehicleModel } from '../vehicle/PlayerVehicleModel.ts';
 import { CameraController, cameraNames } from '../vehicle/CameraController.ts';
 import { InputManager } from '../core/InputManager.ts';
 import { Settings, GRAPHICS } from '../systems/Settings.ts';
@@ -19,68 +21,255 @@ import { Particles } from '../weather/Particles.ts';
 import { Sky } from '../sky/Sky.ts';
 import { Traffic, signalState } from '../traffic/Traffic.ts';
 import { AudioManager } from '../audio/AudioManager.ts';
+import { NavigationVoice } from '../audio/NavigationVoice.ts';
+import type { ManeuverEvent } from '../audio/NavigationVoice.ts';
 import { Companion } from '../companion/Companion.ts';
 import { UI } from '../ui/UI.ts';
 import { VehicleEffects } from '../vehicle/VehicleEffects.ts';
 import { damp, clamp } from '../core/math.ts';
+import { getVehicleConfig, getAllVehicles } from '../vehicle/VehicleRegistry.ts';
+import { GarageController } from '../garage/GarageController.ts';
 
 export class Game {
-  settings=new Settings();scene=new THREE.Scene();road=new Road();vehicle=new VehicleController(this.road);car=this.vehicle.physics;input=new InputManager();weather=new Weather();audio=new AudioManager(this.vehicle.config);
-  renderer:THREE.WebGLRenderer;camera=new THREE.PerspectiveCamera(60,1,.08,5000);cameras:CameraController;
-  world:World;water:Water;life:AmbientLife;hero=this.vehicle.model;effects:VehicleEffects;traffic:Traffic;sky:Sky;particles:Particles;ui:UI;companion:Companion;
-  composer:EffectComposer;fxaa:ShaderPass;
-  screen:'menu'|'playing'|'paused'='menu';modalOpen=false;zen=false;hiddenHud=false;
-  accumulator=0;lastTime=0;time=0;cinematicTime=0;fps=60;saveTimer=0;lastSavedDistance=0;lastRegion='';lastSense=0;mutedVolume=.5;
-  season={snow:{value:0},autumn:{value:0}};
-  position=new THREE.Vector3();frameNumber=0;lastOrigin=0;running=true;
-  debug:{toggle:()=>void;update:()=>void}|null=null;
-  constructor(canvas:HTMLCanvasElement) {
-    this.renderer=new THREE.WebGLRenderer({canvas,antialias:false,powerPreference:'high-performance'});
-    this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.03;
-    this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.info.autoReset=false;
-    this.world=new World(this.scene,this.road);this.sky=new Sky(this.scene);this.water=new Water(this.scene);this.life=new AmbientLife(this.scene,this.road,this.world.materials);
-    this.effects=new VehicleEffects(this.scene);
-    this.scene.add(this.hero.group);this.traffic=new Traffic(this.scene,this.road);this.particles=new Particles(this.scene);this.cameras=new CameraController(this.camera,canvas,this.vehicle.config);
-    const environment=new RoomEnvironment(),pmrem=new THREE.PMREMGenerator(this.renderer);this.scene.environment=pmrem.fromScene(environment,.04).texture;this.scene.environmentIntensity=.5;environment.dispose();pmrem.dispose();
-    this.composer=new EffectComposer(this.renderer);this.composer.addPass(new RenderPass(this.scene,this.camera));this.composer.addPass(new OutputPass());this.fxaa=new ShaderPass(FXAAShader);this.composer.addPass(this.fxaa);
-    this.world.materials.terrain.onBeforeCompile=shader=>{shader.uniforms.uSnow=this.season.snow;shader.uniforms.uAutumn=this.season.autumn;shader.fragmentShader='uniform float uSnow; uniform float uAutumn;\n'+shader.fragmentShader;shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.16,0.97,0.74),uAutumn);\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.75,0.80,0.82),uSnow*0.9);');};
-    this.ui=new UI(this.settings,{
-      start:zen=>this.start(zen),resume:()=>this.resume(),pause:()=>this.pause(),restart:()=>this.restart(),menu:()=>this.menu(),camera:()=>this.cycleCamera(),reset:()=>this.recover(),
-      setting:(key,value)=>this.setSetting(key,value),modal:open=>{this.modalOpen=open;this.input.clear();this.input.enabled=!open&&this.screen==='playing';},
-      search:q=>this.weather.search(q),city:async c=>{await this.weather.fetchCity(c);this.settings.data.weather='live';this.settings.data.timeMode='real';this.settings.save();},locate:async()=>{await this.weather.locate();this.settings.data.weather='live';this.settings.data.timeMode='real';this.settings.save();}
-    });
-    this.companion=new Companion(this.ui.companionCanvas);
-    this.weather.onChange=()=>{this.settings.data.weather=this.weather.mode;};
-    const weather=this.settings.data.weather;
-    this.weather.set(weather==='live'?'clear':weather);
-    if(weather==='live')this.ui.toast('Choose a city to reconnect live weather.');
-    this.cameras.mode=this.settings.data.camera;this.applyGraphics();this.world.update(this.car.s,true);
-    this.input.onAction=key=>{
-      if(key==='F2'&&import.meta.env.DEV){this.debug?.toggle();return;}
-      if(key==='Escape'){if(this.ui.activeOverlay)return;if(this.screen==='playing')this.pause();else if(this.screen==='paused')this.resume();return;}
-      if(this.screen!=='playing'||this.modalOpen)return;
-      if(key==='KeyC')this.cycleCamera();if(key==='KeyR')this.recover();
-      if(key==='KeyL')this.ui.toast('Headlights · '+this.hero.lights.toggle());
-      if(key==='KeyH'){this.hiddenHud=!this.hiddenHud;this.setHud();}
-      if(key==='KeyM'){if(this.settings.data.master>0){this.mutedVolume=this.settings.data.master;this.setSetting('master',0);}else this.setSetting('master',this.mutedVolume||.5);this.ui.toast(this.settings.data.master===0?'Audio muted':'Audio on');}
+  settings = new Settings();
+  scene = new THREE.Scene();
+  road = new Road();
+  vehicles = new Map<string, VehicleController>();
+  vehicle: VehicleController;
+  car: VehiclePhysics;
+  hero: PlayerVehicleModel;
+  input = new InputManager();
+  weather = new Weather();
+  audio: AudioManager;
+  navVoice = new NavigationVoice();
+  renderer: THREE.WebGLRenderer;
+  camera = new THREE.PerspectiveCamera(60, 1, .08, 5000);
+  cameras: CameraController;
+  world: World;
+  water: Water;
+  life: AmbientLife;
+  effects: VehicleEffects;
+  traffic: Traffic;
+  sky: Sky;
+  particles: Particles;
+  ui: UI;
+  companion: Companion;
+  garage: GarageController;
+  composer: EffectComposer;
+  fxaa: ShaderPass;
+  screen: 'menu' | 'playing' | 'paused' = 'menu';
+  modalOpen = false;
+  zen = false;
+  hiddenHud = false;
+  accumulator = 0;
+  lastTime = 0;
+  time = 0;
+  cinematicTime = 0;
+  fps = 60;
+  saveTimer = 0;
+  lastSavedDistance = 0;
+  lastRegion = '';
+  lastSense = 0;
+  mutedVolume = .5;
+  season = { snow: { value: 0 }, autumn: { value: 0 } };
+  position = new THREE.Vector3();
+  frameNumber = 0;
+  lastOrigin = 0;
+  running = true;
+  debug: { toggle: () => void; update: () => void } | null = null;
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.03;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.info.autoReset = false;
+    this.world = new World(this.scene, this.road);
+    this.sky = new Sky(this.scene);
+    this.water = new Water(this.scene);
+    this.life = new AmbientLife(this.scene, this.road, this.world.materials);
+    this.effects = new VehicleEffects(this.scene);
+
+    const initialId = this.settings.data.selectedVehicle;
+    for (const vConfig of getAllVehicles()) {
+      const vc = new VehicleController(this.road, vConfig);
+      this.vehicles.set(vConfig.id, vc);
+      this.scene.add(vc.model.group);
+      vc.model.group.visible = (vConfig.id === initialId);
+    }
+    this.vehicle = this.vehicles.get(initialId) || this.vehicles.get('r34') || new VehicleController(this.road, getVehicleConfig(initialId));
+    this.car = this.vehicle.physics;
+    this.hero = this.vehicle.model;
+    this.audio = new AudioManager(this.vehicle.config);
+
+    this.traffic = new Traffic(this.scene, this.road);
+    this.particles = new Particles(this.scene);
+    this.cameras = new CameraController(this.camera, canvas, this.vehicle.config);
+    const environment = new RoomEnvironment(), pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(environment, .04).texture;
+    this.scene.environmentIntensity = .5;
+    environment.dispose();
+    pmrem.dispose();
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(new OutputPass());
+    this.fxaa = new ShaderPass(FXAAShader);
+    this.composer.addPass(this.fxaa);
+    this.world.materials.terrain.onBeforeCompile = shader => {
+      shader.uniforms.uSnow = this.season.snow;
+      shader.uniforms.uAutumn = this.season.autumn;
+      shader.fragmentShader = 'uniform float uSnow; uniform float uAutumn;\n' + shader.fragmentShader;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.16,0.97,0.74),uAutumn);\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.75,0.80,0.82),uSnow*0.9);');
     };
-    this.sky.onThunder=()=>this.audio.thunder();
-    window.addEventListener('resize',()=>this.resize());
-    window.addEventListener('blur',()=>{if(this.screen==='playing')this.pause();});
-    document.addEventListener('visibilitychange',()=>{if(document.hidden){this.persist();if(this.screen==='playing')this.pause();}this.lastTime=0;this.accumulator=0;});
-    window.addEventListener('pagehide',()=>this.persist());
-    canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();this.running=false;this.pause();this.ui.toast('Graphics paused. Waiting for your browser to restore the display.');});
-    canvas.addEventListener('webglcontextrestored',()=>{this.running=true;this.lastTime=0;this.ui.toast('Graphics restored. Resume when you are ready.');});
-    this.resize();void this.loadVehicle();
-    if(import.meta.env.DEV)void import('../vehicle/VehicleDebug.ts').then(({VehicleDebug})=>{this.debug=new VehicleDebug(this.vehicle,()=>this.cameras.initialized=false);});
-    requestAnimationFrame(t=>this.frame(t));
+    this.navVoice.setSettings(this.settings.data.navVoice, this.settings.data.navVoiceVolume, this.settings.data.navVoiceId);
+
+    this.garage = new GarageController(
+      this.settings.data.selectedVehicle,
+      (id) => this.vehicles.get(id)?.model || null,
+      {
+        onStateChange: (state, currentVehicleId) => {
+          const transitioning = state !== 'IDLE';
+          this.ui.isGarageTransitioning = transitioning;
+          this.cameras.isGarageTransitioning = transitioning;
+          if (!transitioning) {
+            for (const [id, vc] of this.vehicles) {
+              vc.model.group.visible = (id === currentVehicleId);
+            }
+          }
+          this.ui.updateGarageView();
+        },
+        onVehicleChanged: (vehicleId) => {
+          this.switchVehicle(vehicleId);
+        }
+      }
+    );
+
+    this.ui = new UI(this.settings, {
+      start: zen => this.start(zen), resume: () => this.resume(), pause: () => this.pause(), restart: () => this.restart(), menu: () => this.menu(), camera: () => this.cycleCamera(), reset: () => this.recover(),
+      setting: (key, value) => this.setSetting(key, value), modal: open => { this.modalOpen = open; this.input.clear(); this.input.enabled = !open && this.screen === 'playing'; },
+      search: q => this.weather.search(q), city: async c => { await this.weather.fetchCity(c); this.settings.data.weather = 'live'; this.settings.data.timeMode = 'real'; this.settings.save(); }, locate: async () => { await this.weather.locate(); this.settings.data.weather = 'live'; this.settings.data.timeMode = 'real'; this.settings.save(); },
+      getVoices: () => this.navVoice.getAvailableEnglishVoices(),
+      selectVehicle: async id => {
+        if (this.ui.activeOverlay === 'garage') {
+          const vehicles = getAllVehicles();
+          const currIdx = vehicles.findIndex(v => v.id === this.settings.data.selectedVehicle);
+          const targetIdx = vehicles.findIndex(v => v.id === id);
+          const dir = targetIdx >= currIdx ? 'next' : 'prev';
+          this.garage.setRoad(this.road, this.car.s, this.car.offset, this.car.heading);
+          const started = this.garage.requestTransition(id, dir);
+          if (started) {
+            this.ui.isGarageTransitioning = true;
+            this.cameras.isGarageTransitioning = true;
+            this.ui.updateGarageView();
+          }
+        } else {
+          this.switchVehicle(id);
+        }
+      },
+      getAvailableVehicles: () => getAllVehicles(),
+      onOverlayChanged: overlay => {
+        const inGarage = overlay === 'garage';
+        const wasInGarage = this.garage.active;
+        this.cameras.setGarageMode(inGarage, this.road, this.car.s, this.car.offset);
+        this.garage.setActive(inGarage);
+        if (inGarage) {
+          this.garage.setRoad(this.road, this.car.s, this.car.offset, this.car.heading);
+          for (const [id, vc] of this.vehicles) {
+            vc.model.group.visible = (id === this.settings.data.selectedVehicle);
+          }
+          this.ui.updateGarageView();
+        } else if (wasInGarage) {
+          this.car.syncPose(this.garage.presentationS, this.garage.presentationOffset, this.garage.presentationHeading);
+          for (const [id, vc] of this.vehicles) {
+            vc.model.group.visible = (id === this.settings.data.selectedVehicle);
+          }
+        }
+      },
+    });
+    this.companion = new Companion(this.ui.companionCanvas);
+    this.weather.onChange = () => { this.settings.data.weather = this.weather.mode; };
+    const weather = this.settings.data.weather;
+    this.weather.set(weather === 'live' ? 'clear' : weather);
+    if (weather === 'live') this.ui.toast('Choose a city to reconnect live weather.');
+    this.cameras.mode = this.settings.data.camera; this.applyGraphics(); this.world.update(this.car.s, true);
+    this.input.onAction = key => {
+      if (key === 'F2' && import.meta.env.DEV) { this.debug?.toggle(); return; }
+      if (key === 'Escape') { if (this.ui.activeOverlay) return; if (this.screen === 'playing') this.pause(); else if (this.screen === 'paused') this.resume(); return; }
+      if (this.screen !== 'playing' || this.modalOpen) return;
+      if (key === 'KeyC') this.cycleCamera(); if (key === 'KeyR') this.recover();
+      if (key === 'KeyL') this.ui.toast('Headlights · ' + this.hero.lights.toggle());
+      if (key === 'KeyH') { this.hiddenHud = !this.hiddenHud; this.setHud(); }
+      if (key === 'KeyM') { if (this.settings.data.master > 0) { this.mutedVolume = this.settings.data.master; this.setSetting('master', 0); } else this.setSetting('master', this.mutedVolume || .5); this.ui.toast(this.settings.data.master === 0 ? 'Audio muted' : 'Audio on'); }
+    };
+    this.sky.onThunder = () => this.audio.thunder();
+    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('blur', () => { if (this.screen === 'playing') this.pause(); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) { this.persist(); if (this.screen === 'playing') this.pause(); } this.lastTime = 0; this.accumulator = 0; });
+    window.addEventListener('pagehide', () => this.persist());
+    canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.running = false; this.pause(); this.ui.toast('Graphics paused. Waiting for your browser to restore the display.'); });
+    canvas.addEventListener('webglcontextrestored', () => { this.running = true; this.lastTime = 0; this.ui.toast('Graphics restored. Resume when you are ready.'); });
+    this.resize(); void this.loadVehicles();
+    if (import.meta.env.DEV) void import('../vehicle/VehicleDebug.ts').then(({ VehicleDebug }) => { this.debug = new VehicleDebug(this.vehicle, () => this.cameras.initialized = false); });
+    requestAnimationFrame(t => this.frame(t));
   }
-  async loadVehicle(){this.ui.toast('Loading Nissan Skyline R34…');try{await this.hero.load();this.ui.toast('Nissan Skyline R34 ready · choose your drive');}catch{this.ui.toast('Nissan Skyline R34 could not load. Check your connection and select Drive to retry.');}}
-  start(zen:boolean) {if(!this.hero.ready){if(this.hero.error)void this.loadVehicle();else this.ui.toast('The R34 is still loading…');return;}this.zen=zen;this.hiddenHud=zen&&this.settings.data.zenHideHud;this.screen='playing';this.input.clear();this.input.enabled=true;this.ui.setScreen('playing');this.setHud();void this.audio.start();this.ui.toast(zen?'Zen drive · no fuel, no hurry':'W to accelerate · A / D to steer · C for camera');}
-  resume(){this.screen='playing';this.input.enabled=!this.modalOpen;this.input.clear();this.ui.setScreen('playing');void this.audio.start();}
-  pause(){this.screen='paused';this.input.enabled=false;this.input.clear();this.audio.pause();this.ui.setScreen('paused');this.persist();}
-  menu(){this.persist();this.screen='menu';this.input.enabled=false;this.input.clear();this.audio.pause();this.ui.setScreen('menu');document.body.classList.remove('zen-hidden');}
-  restart(){this.persist();this.car.reset(160);this.car.fuel=100;this.car.distance=0;this.car.cleanDistance=0;this.car.damage=0;this.lastSavedDistance=0;this.traffic.reset();this.effects.reset();this.world.rebuild(this.car.s);this.cameras.initialized=false;this.start(this.zen);}
+
+  switchVehicle(vehicleId: string) {
+    const targetController = this.vehicles.get(vehicleId);
+    if (!targetController || vehicleId === this.settings.data.selectedVehicle) return;
+    this.settings.data.selectedVehicle = vehicleId;
+    this.settings.save();
+
+    const previousS = this.car.s, previousOffset = this.car.offset, previousHeading = this.car.heading;
+    this.vehicle = targetController;
+    this.car = this.vehicle.physics;
+    this.hero = this.vehicle.model;
+
+    this.car.syncPose(previousS, previousOffset, previousHeading);
+
+    for (const [id, vc] of this.vehicles) {
+      vc.model.group.visible = (id === vehicleId);
+    }
+
+    this.cameras.setConfig(this.vehicle.config);
+    this.audio.setVehicle(this.vehicle.config);
+    this.ui.updateGarageView();
+  }
+
+  async loadVehicles() {
+    for (const [, vc] of this.vehicles) {
+      if (!vc.model.ready && !vc.model.error) {
+        void vc.model.load().catch(() => {});
+      }
+    }
+  }
+
+  start(zen: boolean) {
+    this.garage.setActive(false);
+    for (const [id, vc] of this.vehicles) {
+      vc.model.group.visible = (id === this.settings.data.selectedVehicle);
+    }
+    if (!this.hero.ready) {
+      if (this.hero.error) void this.loadVehicles();
+      else this.ui.toast(`The ${this.vehicle.config.name} is still loading…`);
+      return;
+    }
+    this.zen=zen;this.hiddenHud=zen&&this.settings.data.zenHideHud;this.screen='playing';this.input.clear();this.input.enabled=true;this.ui.setScreen('playing');this.setHud();void this.audio.start();
+    this.ui.toast(zen?'Zen drive · no fuel, no hurry':'W to accelerate · A / D to steer · C for camera');
+  }
+
+  resume() {
+    this.screen = 'playing';
+    this.input.enabled = !this.modalOpen;
+    this.input.clear();
+    this.lastTime = 0;
+    this.accumulator = 0;
+    this.ui.setScreen('playing');
+    void this.audio.start();
+  }
+  pause(){this.screen='paused';this.input.enabled=false;this.input.clear();this.audio.pause();this.navVoice.cancel();this.ui.setScreen('paused');this.persist();}
+  menu(){this.persist();this.screen='menu';this.input.enabled=false;this.input.clear();this.audio.pause();this.navVoice.cancel();this.ui.setScreen('menu');document.body.classList.remove('zen-hidden');}
+  restart(){this.persist();this.car.reset(160);this.car.fuel=100;this.car.distance=0;this.car.cleanDistance=0;this.car.damage=0;this.lastSavedDistance=0;this.traffic.reset();this.effects.reset();this.navVoice.cancel();this.world.rebuild(this.car.s);this.cameras.initialized=false;this.start(this.zen);}
   recover(){this.car.reset();if(this.car.fuel<5)this.car.fuel=8;this.car.damage=0;this.cameras.initialized=false;this.effects.reset();this.audio.chime();this.ui.toast('Back on the road. Take your time.');}
   cycleCamera(){this.cameras.mode=(this.cameras.mode+1)%cameraNames.length;this.settings.data.camera=this.cameras.mode;this.settings.save();this.cameras.initialized=false;this.ui.showCameraBadge(cameraNames[this.cameras.mode]);this.ui.toast(cameraNames[this.cameras.mode]+' camera');}
   setHud(){document.body.classList.toggle('zen-hidden',this.hiddenHud);}
@@ -91,6 +280,9 @@ export class Game {
     if(key==='quality')Object.assign(this.settings.data,GRAPHICS[this.settings.data.quality]);
     if(key==='weather'){this.weather.set(this.settings.data.weather);if(value==='live'&&!this.weather.city)this.ui.toast('Choose a city or use your location.');}
     if(key==='camera'){this.cameras.mode=this.settings.data.camera;this.cameras.initialized=false;}
+    if(['navVoice','navVoiceVolume','navVoiceId'].includes(key)){
+      this.navVoice.setSettings(this.settings.data.navVoice, this.settings.data.navVoiceVolume, this.settings.data.navVoiceId);
+    }
     if(['quality','resolution','shadows','antialias','vegetation','theme'].includes(key)) {
       const oldVegetation=this.world.vegetation;this.applyGraphics();
       if(oldVegetation!==this.world.vegetation)this.world.rebuild(this.car.s);
@@ -126,9 +318,14 @@ export class Game {
     // Place the complete bounded traffic pool after origin shifts and while paused.
     this.traffic.update(dt,this.time,this.car,origin,s.traffic*(this.zen&&s.zenLowTraffic?.25:1),this.sky.night,w.wet,false,false);
     const station=this.road.station(this.car.s-50);
-    const pose=this.vehicle.render(moving?this.accumulator*120:1,origin,this.sky.night);this.position.copy(this.hero.group.position);
-    this.effects.update(dt,this.time,this.car,this.hero,this.camera,w.wet,w.snow);
-    this.cameras.update(dt,this.cinematicTime,this.car,pose,origin,this.screen==='menu',s.fov,s.smoothing,s.reducedMotion);
+    const inGarage = this.ui.activeOverlay === 'garage';
+    const pose = inGarage ? this.car.pose() : this.vehicle.render(moving ? this.accumulator * 120 : 1, origin, this.sky.night);
+    if (inGarage) {
+      this.garage.update(dt, origin);
+    }
+    this.position.copy(this.hero.group.position);
+    this.effects.update(dt, this.time, this.car, this.hero, this.camera, w.wet, w.snow);
+    this.cameras.update(dt, this.cinematicTime, this.car, pose, origin, this.screen === 'menu', s.fov, s.smoothing, s.reducedMotion);
     const inTunnel=this.road.isTunnel(this.car.s);
     this.sky.update(moving?dt:0,this.cinematicTime,this.camera,this.position,w,s.timeMode,s.hour,this.weather.mode==='live'?this.weather.city?.timezone:undefined,s.reducedFlashes);
     const sunDir = this.sky.sun.position.clone().sub(this.position).normalize();
@@ -153,8 +350,20 @@ export class Game {
       const sinH = Math.sin(currentHeading);
       const p0 = this.road.point(this.car.s, 0);
 
+      const roadNameMap: Record<string, string> = {
+        coast: 'COASTAL HIGHWAY',
+        country: 'VALLEY ROAD',
+        bridge: 'ASTER CROSSING SPAN',
+        city: 'METROPOLIS EXPRESSWAY',
+        tunnel: 'OBSIDIAN PASS',
+        plains: 'BASIN HIGHWAY',
+      };
+      const currentRoadName = roadNameMap[region.biome] || `${region.name.toUpperCase()} ROAD`;
+
       let navEvent: string | undefined;
-      for (let ds = 0; ds <= 350; ds += 25) {
+      const upcomingManeuvers: ManeuverEvent[] = [];
+
+      for (let ds = 0; ds <= 450; ds += 25) {
         const sampleS = this.car.s + ds;
         const pSample = this.road.point(sampleS, 0);
         const deltaX = pSample.x - p0.x;
@@ -164,24 +373,177 @@ export class Game {
         const localLateral = deltaX * cosH - (-deltaZ) * sinH;
 
         let marker: string | undefined;
-        if (!navEvent && ds > 40) {
-          if (Math.abs(station - sampleS) < 30) {
-            marker = '⛽';
-            navEvent = `HORIZON SERVICE · ${Math.round(ds)}m`;
-          } else if (this.road.isBridge(sampleS)) {
-            marker = '▰';
+        if (!navEvent && ds > 40 && ds <= 350) {
+          if (this.road.isBridge(sampleS)) {
+            marker = 'bridge';
             navEvent = `BRIDGE · ${Math.round(ds)}m`;
           } else if (this.road.isTunnel(sampleS)) {
-            marker = '▱';
+            marker = 'tunnel';
             navEvent = `TUNNEL · ${Math.round(ds)}m`;
-          } else if (Math.abs(this.road.bank(sampleS)) > 0.03) {
-            marker = '↱';
+          } else if (Math.abs(this.road.bank(sampleS)) > 0.035) {
+            marker = this.road.bank(sampleS) > 0 ? 'turn_right' : 'turn_left';
             navEvent = `CURVE · ${Math.round(ds)}m`;
           }
         }
-        navCurve.push({ x: localLateral, y: ds, marker });
+
+        // Collect upcoming distinct maneuvers (curves, bridges, tunnels)
+        if (ds > 15) {
+          if (this.road.isBridge(sampleS) && !this.road.isBridge(sampleS - 25)) {
+            upcomingManeuvers.push({
+              id: `bridge_${Math.round(sampleS / 50) * 50}`,
+              type: 'bridge',
+              stationS: sampleS,
+            });
+          }
+          if (this.road.isTunnel(sampleS) && !this.road.isTunnel(sampleS - 25)) {
+            upcomingManeuvers.push({
+              id: `tunnel_${Math.round(sampleS / 50) * 50}`,
+              type: 'tunnel',
+              stationS: sampleS,
+            });
+          }
+          if (Math.abs(this.road.bank(sampleS)) > 0.045 && Math.abs(this.road.bank(sampleS - 25)) <= 0.045) {
+            upcomingManeuvers.push({
+              id: `curve_${Math.round(sampleS / 50) * 50}`,
+              type: 'curve',
+              stationS: sampleS,
+            });
+          }
+        }
+
+        if (ds <= 350) {
+          navCurve.push({ x: localLateral, y: ds, marker });
+        }
       }
 
+      this.navVoice.updateNavigation(this.car.s, this.car.speed, region.name, upcomingManeuvers, moving);
+
+      // Determine active primary maneuver for Top-Center HUD (Pure Road & Navigation Hierarchy)
+      let activeManeuver: {
+        icon: string;
+        action: string;
+        distance: number;
+        location: string;
+        isFar?: boolean;
+      } | undefined;
+
+      let nearestDist = 999999;
+      let nearestEvent: ManeuverEvent | null = null;
+      for (const m of upcomingManeuvers) {
+        const d = m.stationS - this.car.s;
+        if (d > 0 && d < nearestDist) {
+          nearestDist = d;
+          nearestEvent = m;
+        }
+      }
+
+      if (nearestEvent && nearestDist <= 450) {
+        let icon = 'straight';
+        let action = 'CONTINUE';
+        let loc = currentRoadName;
+
+        if (nearestEvent.type === 'bridge') {
+          icon = 'bridge';
+          action = nearestDist < 45 ? 'CROSSING BRIDGE' : 'BRIDGE AHEAD';
+          loc = 'ASTER SPAN';
+        } else if (nearestEvent.type === 'tunnel') {
+          icon = 'tunnel';
+          action = nearestDist < 45 ? 'ENTERING TUNNEL' : 'TUNNEL AHEAD';
+          loc = 'OBSIDIAN PASS';
+        } else if (nearestEvent.type === 'curve') {
+          const bankVal = this.road.bank(nearestEvent.stationS);
+          icon = bankVal > 0 ? 'turn_right' : 'turn_left';
+          action = bankVal > 0 ? (nearestDist < 45 ? 'SHARP RIGHT' : 'TURN RIGHT') : (nearestDist < 45 ? 'SHARP LEFT' : 'TURN LEFT');
+          loc = currentRoadName;
+        }
+
+        activeManeuver = {
+          icon,
+          action,
+          distance: Math.round(nearestDist),
+          location: loc,
+          isFar: nearestDist > 300
+        };
+      } else {
+        // Highway straight cruising guidance (Restrained state)
+        activeManeuver = {
+          icon: 'straight',
+          action: 'CONTINUE',
+          distance: nearestDist < 999999 ? Math.round(nearestDist) : 1200,
+          location: currentRoadName,
+          isFar: true
+        };
+      }
+
+      // Secondary connected roads geometry for Minimap
+      const secondaryRoads: { points: { x: number; y: number }[] }[] = [];
+      const roadLabels: { text: string; x: number; y: number; angle?: number }[] = [];
+
+      // 1. Service station loop ramp
+      if (station > this.car.s - 80 && station < this.car.s + 350) {
+        const sStart = station - 65;
+        const sEnd = station + 65;
+        const secPts: { x: number; y: number }[] = [];
+        for (let ss = sStart; ss <= sEnd; ss += 30) {
+          const ds = ss - this.car.s;
+          const rampOffset = Math.sin(((ss - sStart) / 130) * Math.PI) * 18;
+          const pRamp = this.road.point(ss, rampOffset);
+          const dx = pRamp.x - p0.x;
+          const dz = pRamp.z - p0.z;
+          const lx = dx * cosH - (-dz) * sinH;
+          if (ds >= 0 && ds <= 350) {
+            secPts.push({ x: lx, y: ds });
+          }
+        }
+        if (secPts.length >= 2) {
+          secondaryRoads.push({ points: secPts });
+          roadLabels.push({ text: 'SERVICE RD', x: 22, y: Math.max(25, station - this.car.s) });
+        }
+      }
+
+      // 2. Scenic turnout / secondary branch road every 800m
+      const branchInterval = 800;
+      const branchS = Math.floor((this.car.s + 150) / branchInterval) * branchInterval + 400;
+      if (branchS > this.car.s - 20 && branchS < this.car.s + 320) {
+        const branchSide = Math.floor(branchS / branchInterval) % 2 === 0 ? 1 : -1;
+        const secPts: { x: number; y: number }[] = [];
+        for (let off = 0; off <= 75; off += 25) {
+          const ss = branchS + off * 0.5;
+          const ds = ss - this.car.s;
+          const lateralOff = branchSide * (off * 0.35);
+          const pBranch = this.road.point(ss, lateralOff);
+          const dx = pBranch.x - p0.x;
+          const dz = pBranch.z - p0.z;
+          const lx = dx * cosH - (-dz) * sinH;
+          if (ds >= 0 && ds <= 350) {
+            secPts.push({ x: lx, y: ds });
+          }
+        }
+        if (secPts.length >= 2) {
+          secondaryRoads.push({ points: secPts });
+        }
+      }
+
+      // 3. Current Road label on Minimap
+      roadLabels.push({ text: currentRoadName, x: 0, y: 75 });
+
+      // Nearby POIs for Top-Left Minimap
+      const nearbyPois: { x: number; y: number; type: string; label: string }[] = [];
+      if (station > this.car.s - 40 && station < this.car.s + 350) {
+        const ds = station - this.car.s;
+        const pSample = this.road.point(station, 18); // Fuel station offset
+        const deltaX = pSample.x - p0.x;
+        const deltaZ = pSample.z - p0.z;
+        const localLateral = deltaX * cosH - (-deltaZ) * sinH;
+        nearbyPois.push({
+          x: localLateral,
+          y: ds,
+          type: 'fuel',
+          label: 'Horizon Fuel'
+        });
+      }
+
+      this.hero.setCameraMode(this.cameras.mode);
       this.hero.updateCockpit({
         speed: this.car.speed,
         rpm: this.car.rpm,
@@ -200,6 +562,7 @@ export class Game {
         fuel: this.car.fuel,
         distance: this.car.distance,
         region: region.name,
+        roadName: currentRoadName,
         regionProgress: region.progress,
         nextStation: station - this.car.s,
         temperature: w.temperature,
@@ -216,10 +579,17 @@ export class Game {
         damage: this.car.damage,
         clean: this.car.cleanDistance,
         navCurve,
+        secondaryRoads,
+        roadLabels,
         navEvent,
+        activeManeuver,
+        nearbyPois,
       }, dt * 4);
       this.debug?.update();
-      if(this.lastRegion&&this.lastRegion!==region.name&&moving)this.ui.toast('Entering '+region.name);this.lastRegion=region.name;
+      if (this.lastRegion && this.lastRegion !== region.name && moving) {
+        this.ui.showRegionBanner(region.name, 'PACIFIC COAST EXPRESSWAY');
+      }
+      this.lastRegion = region.name;
     }
     // Render live mirrors only in Cockpit mode (time-sliced for browser performance)
     if (this.cameras.mode === 3) {

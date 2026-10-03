@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { VehicleConfig } from './VehicleConfig.ts';
 
 export interface CockpitTelemetry {
   speed: number; // m/s
@@ -42,10 +43,14 @@ export class CockpitDisplay {
   private smoothedRpm = 850;
   private updateTimer = 0;
 
-  constructor() {
+  constructor(private config?: VehicleConfig) {
     this.group.name = 'CockpitInCarDisplays';
+    // Hidden by default for external cameras, only enabled during Cockpit (FPP) camera mode
+    this.group.visible = false;
 
-    if (typeof document !== 'undefined') {
+    const isR34 = !config || config.id === 'r34';
+
+    if (typeof document !== 'undefined' && isR34) {
       // 1. Driver Instrument Cluster Display (512x256)
       this.clusterCanvas = document.createElement('canvas');
       this.clusterCanvas.width = 512;
@@ -55,11 +60,12 @@ export class CockpitDisplay {
       this.clusterTexture.colorSpace = THREE.SRGBColorSpace;
       this.clusterTexture.anisotropy = 4;
 
+
       this.clusterMaterial = new THREE.MeshBasicMaterial({
         map: this.clusterTexture,
         transparent: true,
-        side: THREE.DoubleSide,
-        depthWrite: false,
+        side: THREE.FrontSide,
+        depthWrite: true,
       });
 
       const clusterGeo = new THREE.PlaneGeometry(0.26, 0.12);
@@ -81,8 +87,8 @@ export class CockpitDisplay {
       this.gpsMaterial = new THREE.MeshBasicMaterial({
         map: this.gpsTexture,
         transparent: true,
-        side: THREE.DoubleSide,
-        depthWrite: false,
+        side: THREE.FrontSide,
+        depthWrite: true,
       });
 
       const gpsGeo = new THREE.PlaneGeometry(0.122, 0.088);
@@ -123,14 +129,15 @@ export class CockpitDisplay {
       flipMirrorProjection(this.leftCamera);
       flipMirrorProjection(this.rightCamera);
 
-      // Rear-View Mirror Mesh (Mounted exactly on physical windshield header mirror glass)
+      // Rear-View Mirror Mesh (Mounted inside windshield header)
       const rearMirrorGeo = new THREE.PlaneGeometry(0.18, 0.052);
       const rearMirrorMat = new THREE.MeshBasicMaterial({
         map: this.rearRenderTarget.texture,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
+        depthWrite: true,
       });
       this.rearMirrorMesh = new THREE.Mesh(rearMirrorGeo, rearMirrorMat);
-      this.rearMirrorMesh.position.set(0.04, 1.335, -0.375);
+      this.rearMirrorMesh.position.set(0.04, 1.18, -0.375);
       this.rearMirrorMesh.rotation.set(-0.08, 0.24, 0); // Angled slightly down & toward RHD driver
       this.group.add(this.rearMirrorMesh);
 
@@ -138,7 +145,8 @@ export class CockpitDisplay {
       const leftMirrorGeo = new THREE.PlaneGeometry(0.125, 0.072);
       const leftMirrorMat = new THREE.MeshBasicMaterial({
         map: this.leftRenderTarget.texture,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
+        depthWrite: true,
       });
       this.leftMirrorMesh = new THREE.Mesh(leftMirrorGeo, leftMirrorMat);
       this.leftMirrorMesh.position.set(-0.86, 0.81, -0.38);
@@ -149,13 +157,18 @@ export class CockpitDisplay {
       const rightMirrorGeo = new THREE.PlaneGeometry(0.125, 0.072);
       const rightMirrorMat = new THREE.MeshBasicMaterial({
         map: this.rightRenderTarget.texture,
-        side: THREE.DoubleSide,
+        side: THREE.FrontSide,
+        depthWrite: true,
       });
       this.rightMirrorMesh = new THREE.Mesh(rightMirrorGeo, rightMirrorMat);
       this.rightMirrorMesh.position.set(0.86, 0.81, -0.38);
       this.rightMirrorMesh.rotation.set(-0.04, 0.36, 0); // Angled inward to driver
       this.group.add(this.rightMirrorMesh);
     }
+  }
+
+  public setCockpitActive(active: boolean) {
+    this.group.visible = active;
   }
 
   update(telemetry: CockpitTelemetry, dt: number) {

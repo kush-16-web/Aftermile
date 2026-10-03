@@ -15,9 +15,23 @@ export interface VehiclePose {
 }
 const angleLerp = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b-a), Math.cos(b-a))*t;
 
-/** Grounded dynamic bicycle: separate tire forces and body velocity.
- * Road coordinates provide a surface and position; they never steer the car.
- * Suspension is a damped visual sprung mass over four sampled contact points.
+export interface WheelTelemetry {
+  speed: number;
+  groundSpeed: number;
+  slipRatio: number;
+  slipAngle: number;
+  normalLoad: number;
+  fx: number;
+  fy: number;
+  combinedForce: number;
+  capacity: number;
+}
+
+export type DynamicState = 'GRIP' | 'SCRUB' | 'UNDERSTEER' | 'OVERSTEER' | 'DRIFT' | 'SPIN' | 'BURNOUT';
+export type DriftPhase = 'NORMAL' | 'INITIATING' | 'SLIDING' | 'RECOVERING';
+
+/** Grounded dynamic vehicle: Pacejka/Dugoff progressive tire forces, combined-slip friction circle,
+ * direction-aware reverse kinematics, motorsport TC, and energy-driven thermal slip metrics.
  */
 export class VehiclePhysics {
   s = 160; offset = 5.1; speed = 0; heading = 0; steering = 0;
@@ -35,6 +49,28 @@ export class VehiclePhysics {
   driveDirection: 1 | -1 = 1;
   heave = 0; heaveVelocity = 0; rollVelocity = 0; pitchVelocity = 0; wheelSpin = 0;
   wheelHeights = [0,0,0,0]; wheelSpins = [0,0,0,0];
+
+  // Dynamic Telemetry & State Classification
+  dynamicState: DynamicState = 'GRIP';
+  driftPhase: DriftPhase = 'NORMAL';
+  driftIntensity = 0;
+  driftAngle = 0;
+  frontAverageSlip = 0;
+  rearAverageSlip = 0;
+  drivenWheelSlip = 0;
+  drivetrainTorque = 0;
+  tcActive = false;
+  tcCut = 0;
+  absActive = false;
+  slipPower = [0, 0, 0, 0];
+  smokeEnergy = [0, 0, 0, 0];
+  wheelsTelemetry: [WheelTelemetry, WheelTelemetry, WheelTelemetry, WheelTelemetry] = [
+    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0 },
+    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0 },
+    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0 },
+    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0 }
+  ];
+
   previousPose:VehiclePose={s:0,offset:0,heading:0,height:0,steering:0,surfacePitch:0,surfaceRoll:0,roll:0,pitch:0,heave:0,wheelHeights:[0,0,0,0],wheelSpins:[0,0,0,0],wheelSpin:0};
   private currentPose:VehiclePose={...this.previousPose,wheelHeights:[0,0,0,0],wheelSpins:[0,0,0,0]};
   private interpolatedPose:VehiclePose={...this.previousPose,wheelHeights:[0,0,0,0],wheelSpins:[0,0,0,0]};
@@ -49,9 +85,42 @@ export class VehiclePhysics {
     this.acceleration = this.lateralAcceleration = this.throttle = this.engineLoad = this.brakeAmount = this.slip = 0;
     this.reverseDelay = this.shiftTimer = 0; this.gear = 1; this.rpm = this.config.engine.idleRpm;
     this.driveDirection = 1; this.wheelSpin = 0; this.wheelSpins.fill(0);
+    this.slipPower.fill(0); this.smokeEnergy.fill(0); this.tcActive = false; this.tcCut = 0; this.absActive = false;
+    this.dynamicState = 'GRIP';
+    this.driftPhase = 'NORMAL';
+    this.driftIntensity = 0;
+    this.driftAngle = 0;
+    this.frontAverageSlip = 0;
+    this.rearAverageSlip = 0;
+    this.drivenWheelSlip = 0;
+    this.drivetrainTorque = 0;
     this.refueling = false; this.input.reset(); this.collisionTimer = 1;
     this.previousS = this.s; this.previousOffset = this.offset;
     this.sampleSurface(); this.sampleSurface(); this.sprungHeight = this.height; this.writePose(this.previousPose);
+  }
+  syncPose(s = this.s, offset = this.offset, heading = this.heading) {
+    this.s = Math.max(0, s);
+    this.offset = offset;
+    this.heading = heading;
+    this.speed = 0;
+    this.lateralVelocity = 0;
+    this.bodyLateralVelocity = 0;
+    this.yawRate = 0;
+    this.roll = 0;
+    this.pitch = 0;
+    this.heave = 0;
+    this.heaveVelocity = 0;
+    this.rollVelocity = 0;
+    this.pitchVelocity = 0;
+    this.steering = 0;
+    this.previousS = this.s;
+    this.previousOffset = this.offset;
+    this.sampleSurface();
+    this.sampleSurface();
+    this.sprungHeight = this.height;
+    this.writePose(this.previousPose);
+    this.writePose(this.currentPose);
+    this.writePose(this.interpolatedPose);
   }
   /** Weather arguments remain for compatibility; Pass 1 uses a dry-road tire tune. */
   update(dt: number, keys: Controls, _wet: number, _snow: number, fuelEnabled: boolean, damageEnabled: boolean) {
@@ -69,119 +138,346 @@ export class VehiclePhysics {
     this.input.update(dt, keys, this.speed, c);
     this.grip = c.tires.grip;
     
+    const lf = c.wheelbase * (1 - c.frontWeight), lr = c.wheelbase * c.frontWeight;
+    const isReversingMotion = this.speed < -0.10;
+    const bodySlipAngle = Math.atan2(this.bodyLateralVelocity, Math.max(1.0, speed));
+    const u = this.input.steering;
+
+    // Normal load calculation with dynamic longitudinal weight transfer
+    const normalLoad = mass * g * Math.max(0.2, Math.cos(this.surfacePitch) * Math.cos(this.surfaceRoll));
+    const frontLoad = clamp(normalLoad * c.frontWeight - mass * this.acceleration * c.centerOfGravity / c.wheelbase, normalLoad * 0.20, normalLoad * 0.80);
+    const rearLoad = normalLoad - frontLoad;
+
+    // Estimated front & rear slip for physical countersteer authority detection
+    const estFrontLatVel = this.bodyLateralVelocity + lf * this.yawRate;
+    const estFrontSlip = this.steering - Math.atan2(estFrontLatVel, Math.max(2.0, speed));
+    const estRearLatVel = this.bodyLateralVelocity - lr * this.yawRate;
+    const estRearSlip = -Math.atan2(estRearLatVel, Math.max(2.0, speed));
+    this.driftAngle = bodySlipAngle;
+
+    // Continuous Physical Drift State Machine & Hysteresis
+    const physicalOversteerMag = Math.max(
+      (Math.abs(estRearSlip) - 0.035) / 0.12,
+      (Math.abs(bodySlipAngle) - 0.030) / 0.10,
+      (Math.abs(this.yawRate) * lr / Math.max(2.0, speed) - 0.03) / 0.10
+    );
+    const isHandbrakeInitiating = speed > 2.5 && this.input.handbrake > 0.1;
+    const isPowerOversteering = speed > 3.5 && this.throttle > 0.5 && Math.abs(u) > 0.15 && Math.abs(estRearSlip) > 0.05;
+    const isPhysicallySliding = speed > 2.5 && physicalOversteerMag > 0.05 && (Math.abs(estRearSlip) > Math.abs(estFrontSlip) * 0.65 || Math.abs(bodySlipAngle) > 0.035);
+
+    if (isHandbrakeInitiating) {
+      this.driftPhase = 'INITIATING';
+      this.driftIntensity = damp(this.driftIntensity, Math.max(0.70, clamp(physicalOversteerMag, 0, 1)), 16, dt);
+    } else if (isPhysicallySliding && (this.driftPhase === 'INITIATING' || this.driftPhase === 'SLIDING' || isPowerOversteering || physicalOversteerMag > 0.25)) {
+      this.driftPhase = 'SLIDING';
+      const throttleSustain = this.throttle > 0.2 ? 0.30 * this.throttle : 0;
+      const targetIntensity = clamp(physicalOversteerMag + throttleSustain, 0, 1);
+      this.driftIntensity = damp(this.driftIntensity, targetIntensity, 10, dt);
+    } else if (this.driftIntensity > 0.04) {
+      this.driftPhase = 'RECOVERING';
+      const recoveryRate = this.throttle < 0.15 ? 5.8 : lerp(3.8, 1.8, clamp(this.throttle, 0, 1));
+      this.driftIntensity = damp(this.driftIntensity, 0, recoveryRate, dt);
+    } else {
+      this.driftPhase = 'NORMAL';
+      this.driftIntensity = 0;
+    }
+
+    const isOversteering = (Math.abs(estRearSlip) > 0.04 || Math.abs(bodySlipAngle) > 0.035 || this.driftPhase === 'SLIDING' || this.driftPhase === 'INITIATING' || this.dynamicState === 'DRIFT' || this.dynamicState === 'OVERSTEER') && 
+      (Math.abs(estRearSlip) > Math.abs(estFrontSlip) * 0.70 || Math.abs(bodySlipAngle) > 0.035 || this.driftPhase === 'SLIDING' || this.driftPhase === 'INITIATING');
+    const isSliding = !isReversingMotion && isOversteering && speed > 2.0;
+    
+    // Dynamic countersteering detection: driver steers in opposition to current yaw rotation / sideslip
+    const isCountersteering = isSliding && (
+      (u * this.yawRate < -0.005) ||
+      (u * bodySlipAngle > 0.005) ||
+      (u * estRearLatVel > 0.005)
+    );
+
     // Front steering authority: normal speed-sensitive curve for highway driving,
-    // dynamically expanding to full physical countersteering lock during a genuine slide (slip > 0.35).
+    // smoothly expanding up to full physical lock during genuine rear slip/drifting
     const baseLimit = this.steeringLimit(speed);
-    const lf = c.wheelbase*(1-c.frontWeight), lr = c.wheelbase*c.frontWeight;
-    const bodySlipAngle = Math.atan2(this.bodyLateralVelocity, Math.max(1.5, speed));
-    const isCountersteering = this.slip > 0.35 && ((this.input.steering * bodySlipAngle < -0.05) || (this.input.steering * this.yawRate < -0.10));
-    const maxPhysicalLock = Math.min(0.55, c.steering.maxAngleBySpeed[0][1]);
-    const countersteerLimit = lerp(baseLimit, maxPhysicalLock, clamp((this.slip - 0.35) * 1.8, 0, 1));
-    this.maxSteeringAngle = isCountersteering ? countersteerLimit : baseLimit;
+    const maxPhysicalLock = Math.min(0.60, c.steering.maxAngleBySpeed[0][1]);
+    const slideSeverity = Math.max(clamp((Math.abs(estRearSlip) - 0.035) / 0.09, 0, 1), this.driftIntensity);
+    const countersteerAuthority = lerp(Math.max(0.50, baseLimit), maxPhysicalLock, Math.max(0.80, slideSeverity));
+    this.maxSteeringAngle = isCountersteering ? countersteerAuthority : baseLimit;
 
     const rackRate = isCountersteering 
-      ? Math.max(c.steering.response * 1.5, c.steering.returnRate)
-      : lerp(c.steering.response, c.steering.highwayResponse, clamp(speed/35, 0, 1));
-    const u = this.input.steering;
+      ? Math.max(c.steering.response * 2.0, c.steering.returnRate * 1.8)
+      : lerp(c.steering.response, c.steering.highwayResponse, clamp(speed / 30, 0, 1));
     const linW = c.steering.linearWeight ?? 0.90;
     const powW = c.steering.powerWeight ?? 0.10;
     const powExp = c.steering.powerExponent ?? 1.6;
     const precisionInput = Math.sign(u) * (linW * Math.abs(u) + powW * Math.pow(Math.abs(u), powExp));
     this.steering = damp(this.steering, precisionInput * this.maxSteeringAngle, rackRate, dt);
-    const station = this.road.station(this.s-50);
-    this.refueling = keys.refuel && Math.abs(this.s-station)<28 && this.offset>13 && this.offset<33 && speed<.6;
-    if (this.refueling) this.fuelLevelLitres = Math.min(this.config.fuel.tankLitres, this.fuelLevelLitres+dt*this.config.fuel.refuelLitresPerSecond);
+    const station = this.road.station(this.s - 50);
+    this.refueling = keys.refuel && Math.abs(this.s - station) < 28 && this.offset > 13 && this.offset < 33 && speed < 0.6;
+    if (this.refueling) this.fuelLevelLitres = Math.min(this.config.fuel.tankLitres, this.fuelLevelLitres + dt * this.config.fuel.refuelLitresPerSecond);
 
-    if (this.driveDirection===-1 && keys.throttle && speed<.15) {
-      this.driveDirection=1; this.gear=1; this.reverseDelay=0;
+    // Forward <-> Reverse Direction Transitions (require intentional stationary hold)
+    if (this.driveDirection === -1 && keys.throttle && speed < 0.25) {
+      this.driveDirection = 1; this.gear = 1; this.reverseDelay = 0;
     }
-    if (this.driveDirection===1 && keys.brake && speed<.15 && !keys.throttle && !keys.handbrake) this.reverseDelay += dt;
-    else this.reverseDelay = 0;
-    if (this.reverseDelay >= c.brakes.reverseDelay) { this.driveDirection=-1; this.reverseDelay=0; }
-    const reversing = this.driveDirection===-1;
-    const powerAvailable = this.fuel>0 || !fuelEnabled;
-    this.throttle = powerAvailable && !this.refueling ? (reversing&&!keys.throttle?this.input.brake:reversing?0:this.input.throttle) : 0;
-    this.brakeAmount = this.refueling ? 1 : (reversing?this.input.throttle:this.input.brake);
-    const ratio = (reversing?c.engine.reverseRatio:c.engine.gears[this.gear-1])*c.engine.finalDrive;
-    let coupledRpm = speed/c.wheelRadius*ratio*60/(Math.PI*2);
-    if (!reversing && this.shiftTimer===0) {
-      if (coupledRpm>c.engine.shiftRpm && this.gear<c.engine.gears.length) { this.gear++; this.shiftTimer=.22; }
-      else if (coupledRpm<1800 && this.gear>1) { this.gear--; this.shiftTimer=.18; }
+    if (this.driveDirection === 1 && keys.brake && speed < 0.25 && !keys.throttle && !keys.handbrake) {
+      this.reverseDelay += dt;
+    } else if (this.driveDirection === 1) {
+      this.reverseDelay = 0;
     }
-    const actualRatio = (reversing?c.engine.reverseRatio:c.engine.gears[this.gear-1])*c.engine.finalDrive;
-    coupledRpm = speed/c.wheelRadius*actualRatio*60/(Math.PI*2);
-    this.rpm = damp(this.rpm, clamp(Math.max(coupledRpm, c.engine.idleRpm+this.throttle*1400), c.engine.idleRpm, c.engine.redlineRpm), 12, dt);
-    const torqueShape = .72 + .28*Math.sin(Math.PI*clamp(this.rpm/c.engine.redlineRpm,0,1));
-    const powerForce = c.engine.powerKw*1000*c.engine.efficiency/Math.max(6,speed);
-    const torqueForce = c.engine.torque*torqueShape*actualRatio*c.engine.efficiency/c.wheelRadius;
-    // Parking-brake clutch interlock: W+Space revs at standstill without powering wheels.
-    // Sustained handbrake brings vehicle to rest; brief handbrake taps initiate slides.
-    this.engineLoad = this.throttle * (this.shiftTimer>0?.35:1) * (1-this.input.handbrake);
-    const driveForce = Math.min(c.engine.maxDriveForce, powerForce, torqueForce)*this.engineLoad*(reversing?-1:1);
-    const normalLoad = mass*g*Math.max(.2,Math.cos(this.surfacePitch)*Math.cos(this.surfaceRoll));
-    const frontLoad = clamp(normalLoad*c.frontWeight-mass*this.acceleration*c.centerOfGravity/c.wheelbase,normalLoad*.25,normalLoad*.75);
-    const rearLoad = normalLoad-frontLoad;
-    // Bound each driven axle by its available normal force on the grade.
-    const frontDrive = clamp(driveForce*c.engine.frontDriveShare,-frontLoad*this.grip,frontLoad*this.grip);
-    const rearDrive = clamp(driveForce*(1-c.engine.frontDriveShare),-rearLoad*this.grip,rearLoad*this.grip);
-    const drive = frontDrive+rearDrive;
-    const brakeDemand = this.brakeAmount*Math.min(c.brakes.force,normalLoad*this.grip);
-    // Electronic brake distribution protects the unloaded rear axle. Reserve
-    // lateral capacity for steering instead of hiding a spin by cutting lock.
-    const frontBrake = Math.min(brakeDemand*c.brakes.frontBias,frontLoad*this.grip*.90);
-    const rearBrake = Math.min(brakeDemand*(1-c.brakes.frontBias),rearLoad*this.grip*.80);
-    const brake = frontBrake+rearBrake;
-    // Handbrake acts solely on rear wheels. At rest, it firmly holds the vehicle on slopes.
-    // In motion, dynamic rear braking allows the rear to slip and preserve momentum.
+    if (this.reverseDelay >= c.brakes.reverseDelay) {
+      this.driveDirection = -1; this.reverseDelay = 0;
+    }
+
+    const reversing = this.driveDirection === -1;
+    const powerAvailable = this.fuel > 0 || !fuelEnabled;
+    this.throttle = powerAvailable && !this.refueling ? (reversing && !keys.throttle ? this.input.brake : reversing ? 0 : this.input.throttle) : 0;
+    this.brakeAmount = this.refueling ? 1 : (reversing ? this.input.throttle : this.input.brake);
+    const ratio = (reversing ? c.engine.reverseRatio : c.engine.gears[this.gear - 1]) * c.engine.finalDrive;
+    let coupledRpm = speed / c.wheelRadius * ratio * 60 / (Math.PI * 2);
+    if (!reversing && this.shiftTimer === 0) {
+      if (coupledRpm > c.engine.shiftRpm && this.gear < c.engine.gears.length) { this.gear++; this.shiftTimer = 0.20; }
+      else if (coupledRpm < 1800 && this.gear > 1) { this.gear--; this.shiftTimer = 0.16; }
+    }
+    const actualRatio = (reversing ? c.engine.reverseRatio : c.engine.gears[this.gear - 1]) * c.engine.finalDrive;
+    coupledRpm = speed / c.wheelRadius * actualRatio * 60 / (Math.PI * 2);
+    
+    // Engine RPM & Rev-Limiter Behavior
+    const targetRpm = clamp(Math.max(coupledRpm, c.engine.idleRpm + this.throttle * 1400), c.engine.idleRpm, c.engine.redlineRpm + 100);
+    this.rpm = damp(this.rpm, targetRpm, 14, dt);
+    
+    // Rev limiter cut factor: power falls off naturally above redline ceiling
+    const overRev = Math.max(0, this.rpm - c.engine.redlineRpm);
+    const revCut = clamp(1.0 - overRev / 60, 0, 1);
+    
+    const torqueShape = (0.72 + 0.28 * Math.sin(Math.PI * clamp(this.rpm / c.engine.redlineRpm, 0, 1))) * revCut;
+    const powerForce = c.engine.powerKw * 1000 * c.engine.efficiency / Math.max(6, speed) * revCut;
+    const torqueForce = c.engine.torque * torqueShape * actualRatio * c.engine.efficiency / c.wheelRadius;
+
+    // Progressive launch modulation (electro-hydraulic clutch curve)
+    const clutch = clamp(0.65 + (speed / 2.5) * 0.35, 0.65, 1.0);
+
+    // Motorsport Traction Control (TC): monitors driven rear-wheel slip and cuts torque during straight wheelspin,
+    // but DOES NOT cut torque during intentional drift / powerslides
+    const isDrifting = this.driftPhase === 'SLIDING' || this.driftPhase === 'INITIATING' || this.driftIntensity > 0.15 || this.input.handbrake > 0.1;
+    const steerActivity = Math.abs(this.steering) / (this.maxSteeringAngle || 0.5);
+    const tcThreshold = lerp(0.24, 0.14, clamp(steerActivity * 1.3, 0, 1));
+    if (!reversing && this.throttle > 0.1 && !isDrifting && (this.slip > tcThreshold || Math.abs(estRearSlip) > tcThreshold)) {
+      this.tcCut = damp(this.tcCut, clamp((Math.max(this.slip, Math.abs(estRearSlip)) - tcThreshold) / 0.25, 0, 0.65), 14, dt);
+      this.tcActive = this.tcCut > 0.05;
+    } else {
+      this.tcCut = damp(this.tcCut, 0, 12, dt);
+      this.tcActive = false;
+    }
+
+    this.engineLoad = this.throttle * clutch * (1.0 - this.tcCut) * (this.shiftTimer > 0 ? 0.35 : 1) * (1 - this.input.handbrake);
+    const rawDriveForce = Math.min(c.engine.maxDriveForce, powerForce, torqueForce) * this.engineLoad * (reversing ? -1 : 1);
+
+    const frontDrive = clamp(rawDriveForce * c.engine.frontDriveShare, -frontLoad * this.grip, frontLoad * this.grip);
+    const rearDrive = clamp(rawDriveForce * (1 - c.engine.frontDriveShare), -rearLoad * this.grip * 0.96, rearLoad * this.grip * 0.96);
+    const drive = frontDrive + rearDrive;
+
+    // Motorsport ABS: modulates maximum axle braking to prevent complete wheel lockup
+    const brakeDemand = this.brakeAmount * Math.min(c.brakes.force, normalLoad * this.grip);
+    const maxFrontBrake = frontLoad * this.grip * 0.92;
+    const maxRearBrake = rearLoad * this.grip * 0.88;
+    const requestedFrontBrake = brakeDemand * c.brakes.frontBias;
+    const requestedRearBrake = brakeDemand * (1 - c.brakes.frontBias);
+    
+    this.absActive = this.brakeAmount > 0.4 && (requestedFrontBrake > maxFrontBrake || requestedRearBrake > maxRearBrake);
+    const frontBrake = Math.min(requestedFrontBrake, maxFrontBrake);
+    const rearBrake = Math.min(requestedRearBrake, maxRearBrake);
+    const brake = frontBrake + rearBrake;
+
+    // Handbrake acts solely on rear wheels
     const totalSpeed = Math.hypot(this.speed, this.bodyLateralVelocity);
-    const isStationary = totalSpeed < .5;
-    const handbrake = this.input.handbrake * (isStationary ? Math.min(c.brakes.handbrakeForce, normalLoad*this.grip) : Math.min(c.brakes.handbrakeForce*0.40, rearLoad*this.grip*0.70));
-    const offRoad = Math.abs(this.offset)>ROAD_HALF+1.5 && !(Math.abs(this.s-station)<65 && this.offset>0);
-    const drag = .5*1.225*c.dragArea*speed*speed;
-    const resistance = normalLoad*(c.rollingResistance+(offRoad?.11:0));
-    const gravity = mass*g*Math.sin(this.surfacePitch);
-    const engineBrake = c.engine.engineBraking*(1-this.throttle)*clamp(speed/4,0,1);
-    const resistanceForce = brake+handbrake+drag+resistance+engineBrake;
-    const appliedForce = drive-gravity;
+    const isStationary = totalSpeed < 0.5;
+    const handbrake = this.input.handbrake * (isStationary ? Math.min(c.brakes.handbrakeForce, rearLoad * this.grip) : Math.min(c.brakes.handbrakeForce, rearLoad * this.grip * 0.92));
+    const offRoad = Math.abs(this.offset) > ROAD_HALF + 1.5 && !(Math.abs(this.s - station) < 65 && this.offset > 0);
+    const drag = 0.5 * 1.225 * c.dragArea * speed * speed;
+    const resistance = normalLoad * (c.rollingResistance + (offRoad ? 0.11 : 0));
+    const gravity = mass * g * Math.sin(this.surfacePitch);
+    const engineBrake = c.engine.engineBraking * (1 - this.throttle) * clamp(speed / 4, 0, 1);
+    const resistanceForce = brake + handbrake + drag + resistance + engineBrake;
+    const appliedForce = drive - gravity;
     const oldSpeed = this.speed;
-    // Friction may hold the car at rest against gravity; it must never launch
-    // it in the opposite direction. Forward torque still works during rollback.
-    if (speed<.05 && Math.abs(appliedForce)<=resistanceForce) this.speed=0;
+
+    // Natural speed integration (NO arbitrary speed cap)
+    if (speed < 0.05 && Math.abs(appliedForce) <= resistanceForce) this.speed = 0;
     else {
-      const direction=Math.sign(oldSpeed)||Math.sign(appliedForce);
-      this.speed=clamp(oldSpeed+(appliedForce-direction*resistanceForce)/mass*dt,-9,c.engine.maxSpeed);
-      if (oldSpeed*this.speed<0 && Math.abs(appliedForce)<=resistanceForce) this.speed=0;
+      const direction = Math.sign(oldSpeed) || Math.sign(appliedForce);
+      this.speed = oldSpeed + (appliedForce - direction * resistanceForce) / mass * dt;
+      if (oldSpeed * this.speed < 0 && Math.abs(appliedForce) <= resistanceForce) this.speed = 0;
     }
     if (this.refueling) this.speed = 0;
-    this.acceleration = damp(this.acceleration,(this.speed-oldSpeed)/dt,12,dt);
+    this.acceleration = damp(this.acceleration, (this.speed - oldSpeed) / dt, 12, dt);
 
-    const vFrontLat = -this.speed*Math.sin(this.steering) + (this.bodyLateralVelocity+lf*this.yawRate)*Math.cos(this.steering);
-    const vFrontLong = this.speed*Math.cos(this.steering) + (this.bodyLateralVelocity+lf*this.yawRate)*Math.sin(this.steering);
-    const frontSlip = -Math.atan2(vFrontLat, Math.max(2.0, Math.abs(vFrontLong)));
+    // =========================================================================
+    // PHYSICAL TIRE FORCES & COMBINED-SLIP MODEL
+    // =========================================================================
+    // Front steered axle velocity in wheel-local space
+    const vFrontChassisLat = this.bodyLateralVelocity + lf * this.yawRate;
+    const vFrontWheelLong = this.speed * Math.cos(this.steering) + vFrontChassisLat * Math.sin(this.steering);
+    const vFrontWheelLat = -this.speed * Math.sin(this.steering) + vFrontChassisLat * Math.cos(this.steering);
+    
+    // Relaxation denominator prevents low-speed division singularity
+    const vRef = Math.max(2.0, Math.abs(this.speed));
+    const frontSlip = -Math.atan2(vFrontWheelLat, vRef);
 
-    const vRearLat = this.bodyLateralVelocity-lr*this.yawRate;
-    const rearSlip = -Math.atan2(vRearLat, Math.max(2.0, Math.abs(this.speed)));
+    // Rear unsteered axle velocity in wheel-local space
+    const vRearChassisLat = this.bodyLateralVelocity - lr * this.yawRate;
+    const rearSlip = -Math.atan2(vRearChassisLat, vRef);
 
-    const frontLong = Math.abs(frontDrive)+frontBrake;
-    const rearLong = Math.abs(rearDrive)+rearBrake+handbrake;
-    const frontCapacity = Math.max(.12,Math.sqrt(Math.max(0,1-Math.pow(frontLong/(frontLoad*this.grip),2))))*frontLoad*this.grip;
-    const rearCapacity = Math.max(.12,Math.sqrt(Math.max(0,1-Math.pow(rearLong/(rearLoad*this.grip),2))))*rearLoad*this.grip*lerp(1,c.tires.handbrakeGrip,this.input.handbrake);
-    const frontForce = frontCapacity*Math.tanh(c.tires.frontStiffness*frontSlip/frontCapacity);
-    const rearForce = rearCapacity*Math.tanh(c.tires.rearStiffness*rearSlip/rearCapacity);
-    const blend = clamp((totalSpeed-1.0)/3.0,0,1);
-    const yawAcceleration = (lf*frontForce-lr*rearForce)/c.yawInertia-c.steering.yawDamping*this.yawRate;
-    const kinematicYaw = this.speed/c.wheelbase*Math.tan(this.steering);
-    this.yawRate = lerp(damp(this.yawRate,kinematicYaw,9,dt),this.yawRate+yawAcceleration*dt,blend);
-    const lateralAfterForces=this.bodyLateralVelocity+(frontForce+rearForce)/mass*dt;
-    // Rotate BOTH body-velocity components into the new heading. The exact rotation preserves kinetic energy.
-    const turn=this.yawRate*dt,ct=Math.cos(turn),st=Math.sin(turn);
-    const dynamicForward=this.speed*ct+lateralAfterForces*st;
-    const dynamicSide=lateralAfterForces*ct-this.speed*st;
-    this.bodyLateralVelocity=lerp(damp(this.bodyLateralVelocity,kinematicYaw*lr,9,dt),dynamicSide,blend);
-    this.speed=lerp(this.speed,dynamicForward,blend);
-    if (totalSpeed<.05) { this.yawRate=damp(this.yawRate,0,20,dt); this.bodyLateralVelocity=damp(this.bodyLateralVelocity,0,20,dt); }
-    this.lateralAcceleration = damp(this.lateralAcceleration,(frontForce+rearForce)/mass,10,dt);
-    this.slip = damp(this.slip, clamp(Math.max(Math.abs(frontSlip),Math.abs(rearSlip))/.22,0,1),8,dt);
+    // Combined friction ellipse: shares capacity between Fx and Fy
+    const frontLongDemand = Math.abs(frontDrive) + frontBrake;
+    const rearLongDemand = Math.abs(rearDrive) + rearBrake + handbrake;
+    const frontMaxCapacity = frontLoad * this.grip;
+    const rearMaxCapacity = rearLoad * this.grip;
+
+    const rhoXFront = clamp(frontLongDemand / Math.max(1, frontMaxCapacity), 0, 1);
+    const rhoXRear = clamp(rearLongDemand / Math.max(1, rearMaxCapacity), 0, 1);
+
+    // Under high longitudinal slip / handbrake, retain a usable sliding lateral friction fraction (38%)
+    const frontAvailableCapacity = frontMaxCapacity * Math.max(0.40, Math.sqrt(Math.max(0, 1 - rhoXFront * rhoXFront)));
+    const ellipseCapacity = rearMaxCapacity * Math.max(0.38, Math.sqrt(Math.max(0, 1 - rhoXRear * rhoXRear)));
+
+    // Progressive slip-state-dependent rear grip recovery:
+    // When Space is released during an established slide, rear grip returns continuously based on physical drift intensity
+    // rather than snapping instantly to 100% capacity.
+    const progressiveDriftCapacity = rearMaxCapacity * lerp(1.0, 0.54, this.driftIntensity);
+    const rearAvailableCapacity = Math.min(ellipseCapacity, progressiveDriftCapacity);
+
+    // Progressive Pacejka/Magic Formula Lateral Force Curve with controlled sliding plateau
+    const tireCurve = (slip: number, stiffness: number, capacity: number): number => {
+      const alpha = Math.abs(slip);
+      const alphaPeak = capacity / Math.max(1000, stiffness);
+      const normAlpha = alpha / Math.max(0.001, alphaPeak);
+
+      if (normAlpha <= 1.0) {
+        // Pre-peak progressive buildup
+        const f = normAlpha * (2.0 - normAlpha);
+        return Math.sign(slip) * capacity * f;
+      } else {
+        // Post-peak controlled sliding plateau (retains ~85% grip for catchable drifting)
+        const muSlide = 0.85;
+        const f = muSlide + (1.0 - muSlide) * Math.exp(-0.65 * (normAlpha - 1.0));
+        return Math.sign(slip) * capacity * f;
+      }
+    };
+
+    const frontWheelLateralForce = tireCurve(frontSlip, c.tires.frontStiffness, frontAvailableCapacity);
+    const rearWheelLateralForce = tireCurve(rearSlip, c.tires.rearStiffness, rearAvailableCapacity);
+
+    // Transform front wheel lateral force from steered wheel space into chassis space:
+    // F_chassis_lat = F_wheel_lat * cos(steering)
+    const frontForce = frontWheelLateralForce * Math.cos(this.steering);
+    const rearForce = rearWheelLateralForce;
+
+    // =========================================================================
+    // LOW-SPEED KINEMATIC REGULARIZATION & DYNAMIC INTEGRATION
+    // =========================================================================
+    // Kinematic Ackermann reference values
+    const kinematicYaw = this.speed / c.wheelbase * Math.tan(this.steering);
+    const kinematicSideVel = kinematicYaw * lr;
+
+    const aeroYawStabilization = 1.0 + Math.pow(clamp(speed / 24, 0, 3.0), 2) * 0.70;
+    const driftYawFactor = lerp(1.0, 0.78, this.driftIntensity);
+    const yawAcceleration = (lf * frontForce - lr * rearForce) / c.yawInertia - (c.steering.yawDamping * aeroYawStabilization * driftYawFactor) * this.yawRate;
+    const isReversingNow = this.speed < -0.05;
+    
+    // Smooth transition from low-speed kinematic turning to high-speed dynamic slip physics
+    const baseDynamicBlend = isReversingNow 
+      ? clamp((totalSpeed - 0.3) / 3.5, 0, 0.30)
+      : clamp((totalSpeed - 0.8) / 3.4, 0, 1.0);
+    const smoothBlend = baseDynamicBlend * baseDynamicBlend * (3 - 2 * baseDynamicBlend);
+    
+    // If handbrake or high power slip is applied, allow immediate dynamic breakaway
+    const slipTrigger = clamp(Math.max(this.input.handbrake * 0.92, (rhoXRear - 0.85) / 0.15), 0, 1);
+    const dynamicBlend = Math.max(smoothBlend, slipTrigger);
+
+    // Update yaw rate
+    const dynamicYawRate = this.yawRate + yawAcceleration * dt;
+    this.yawRate = lerp(damp(this.yawRate, kinematicYaw, isReversingNow ? 16 : 14, dt), dynamicYawRate, dynamicBlend);
+
+    // Update chassis velocity in rotating body reference frame
+    const lateralAfterForces = this.bodyLateralVelocity + (frontForce + rearForce) / mass * dt;
+    const turn = this.yawRate * dt, ct = Math.cos(turn), st = Math.sin(turn);
+    const dynamicForward = this.speed * ct + lateralAfterForces * st;
+    const dynamicSide = lateralAfterForces * ct - this.speed * st;
+
+    this.bodyLateralVelocity = lerp(damp(this.bodyLateralVelocity, kinematicSideVel, isReversingNow ? 16 : 14, dt), dynamicSide, dynamicBlend);
+    this.speed = lerp(this.speed, dynamicForward, dynamicBlend);
+
+    if (totalSpeed < 0.20 && this.input.handbrake < 0.1 && Math.abs(this.throttle) < 0.1) { 
+      this.yawRate = damp(this.yawRate, 0, 16, dt); 
+      this.bodyLateralVelocity = damp(this.bodyLateralVelocity, 0, 16, dt); 
+    }
+    this.lateralAcceleration = damp(this.lateralAcceleration, (frontForce + rearForce) / mass, 10, dt);
+    
+    // Overall vehicle slip index
+    const totalSlipAngle = Math.hypot(frontSlip, rearSlip);
+    this.slip = damp(this.slip, clamp(totalSlipAngle / 1.5, 0, 1), 8, dt);
+    this.frontAverageSlip = frontSlip;
+    this.rearAverageSlip = rearSlip;
+    this.driftAngle = bodySlipAngle;
+    this.drivetrainTorque = rawDriveForce * c.wheelRadius;
+
+    // =========================================================================
+    // PER-WHEEL TELEMETRY & EMISSIONS (SLIP POWER & SMOKE ENERGY)
+    // =========================================================================
+    const wSpeeds = [speed, speed, speed + (this.engineLoad > 0.4 ? speed * 0.15 + 0.5 : 0), speed + (this.engineLoad > 0.4 ? speed * 0.15 + 0.5 : 0)];
+    const wNormals = [frontLoad * 0.5, frontLoad * 0.5, rearLoad * 0.5, rearLoad * 0.5];
+    const wCapacities = [frontMaxCapacity * 0.5, frontMaxCapacity * 0.5, rearMaxCapacity * 0.5, rearMaxCapacity * 0.5];
+    const wFx = [frontDrive * 0.5 - frontBrake * 0.5, frontDrive * 0.5 - frontBrake * 0.5, rearDrive * 0.5 - (rearBrake + handbrake) * 0.5, rearDrive * 0.5 - (rearBrake + handbrake) * 0.5];
+    const wFy = [frontWheelLateralForce * 0.5, frontWheelLateralForce * 0.5, rearWheelLateralForce * 0.5, rearWheelLateralForce * 0.5];
+    const wAlphas = [frontSlip, frontSlip, rearSlip, rearSlip];
+    const wSlips = [
+      Math.abs(vFrontWheelLat),
+      Math.abs(vFrontWheelLat),
+      Math.abs(vRearChassisLat),
+      Math.abs(vRearChassisLat)
+    ];
+
+    for (let w = 0; w < 4; w++) {
+      const slidingVelocity = wSlips[w];
+      const frictionMagnitude = Math.hypot(wFx[w], wFy[w]);
+      this.slipPower[w] = frictionMagnitude * slidingVelocity;
+      
+      // Thermal smoke energy accumulator: accumulates during slip, decays when gripped
+      if (this.slip > 0.24 || Math.abs(wAlphas[w]) > 0.14) {
+        this.smokeEnergy[w] = Math.min(4.0, this.smokeEnergy[w] + this.slipPower[w] * dt * 0.0004);
+      } else {
+        this.smokeEnergy[w] = Math.max(0, this.smokeEnergy[w] - 2.5 * dt);
+      }
+
+      this.wheelsTelemetry[w] = {
+        speed: wSpeeds[w],
+        groundSpeed: speed,
+        slipRatio: (wSpeeds[w] - speed) / Math.max(1.0, speed),
+        slipAngle: wAlphas[w],
+        normalLoad: wNormals[w],
+        fx: wFx[w],
+        fy: wFy[w],
+        combinedForce: frictionMagnitude,
+        capacity: wCapacities[w]
+      };
+    }
+    this.drivenWheelSlip = Math.max(Math.abs(this.wheelsTelemetry[2].slipRatio), Math.abs(this.wheelsTelemetry[3].slipRatio));
+
+    // Dynamic State Classification
+    if (speed < 1.0 && this.throttle > 0.7 && this.rpm > 4500) {
+      this.dynamicState = 'BURNOUT';
+    } else if (Math.abs(bodySlipAngle) > 0.65 || Math.abs(this.yawRate) > 1.8) {
+      this.dynamicState = 'SPIN';
+    } else if (isCountersteering || (speed > 3.0 && (Math.abs(bodySlipAngle) > 0.04 || Math.abs(rearSlip) > 0.08) && (this.slip > 0.08 || Math.abs(rearSlip) > 0.10))) {
+      this.dynamicState = 'DRIFT';
+    } else if (Math.abs(rearSlip) > Math.abs(frontSlip) + 0.03 && this.slip > 0.06) {
+      this.dynamicState = 'OVERSTEER';
+    } else if (Math.abs(frontSlip) > Math.abs(rearSlip) + 0.03 && this.slip > 0.06 && u * this.yawRate >= 0) {
+      this.dynamicState = 'UNDERSTEER';
+    } else if (this.slip > 0.03 || Math.abs(frontSlip) > 0.04 || Math.abs(rearSlip) > 0.04) {
+      this.dynamicState = 'SCRUB';
+    } else {
+      this.dynamicState = 'GRIP';
+    }
+
     const oldRoadHeading = this.road.heading(this.s);
     this.heading += this.yawRate*dt;
     const forwardTravel=this.speed*Math.cos(this.surfacePitch)-this.bodyLateralVelocity*Math.sin(this.surfaceRoll)*Math.sin(this.surfacePitch);
@@ -215,9 +511,7 @@ export class VehiclePhysics {
             if (this.collisionTimer === 0 && Math.abs(this.speed) > 3) this.collide(damageEnabled, 0.12);
           } else {
             // Angled collision: inelastic rebound, energy dissipation, yaw deflection
-            const restitution = 0.14;
-            this.bodyLateralVelocity = -side * Math.max(0.8, vImpact * restitution);
-            this.speed = clamp(this.speed * Math.max(0.35, 1.0 - vImpact * 0.07), -9, c.engine.maxSpeed);
+            this.speed = this.speed * Math.max(0.35, 1.0 - vImpact * 0.07);
             const yawDeflect = -side * Math.sign(this.speed || 1) * clamp(vImpact * 0.42, 0.4, 2.8);
             this.yawRate = damp(this.yawRate + yawDeflect, 0, 7, dt);
             this.heading += -side * 0.04;

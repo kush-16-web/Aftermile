@@ -18,6 +18,7 @@ export class PlayerVehicleModel {
   calipers: THREE.Object3D[] = [];
   lights: VehicleLights;
   cockpit: CockpitDisplay;
+  steeringWheel: THREE.Object3D | null = null;
   ready = false;
   error = '';
   private pending: Promise<void> | null = null;
@@ -25,6 +26,8 @@ export class PlayerVehicleModel {
   private geometries = new Set<THREE.BufferGeometry>();
   private materials = new Set<THREE.Material>();
   private textures = new Set<THREE.Texture>();
+  private originalOpacity = new Map<THREE.Material, number>();
+  private originalTransparent = new Map<THREE.Material, boolean>();
 
   constructor(public config: VehicleConfig) {
     this.group.name = config.name;
@@ -33,7 +36,7 @@ export class PlayerVehicleModel {
     this.group.add(this.surface);
     this.surface.add(this.body);
     this.lights = new VehicleLights(config);
-    this.cockpit = new CockpitDisplay();
+    this.cockpit = new CockpitDisplay(config);
 
     for (const position of config.wheelPositions) {
       const pivot = new THREE.Group();
@@ -67,13 +70,26 @@ export class PlayerVehicleModel {
       throw new Error('Vehicle asset is missing its body or wheel rig.');
     }
     this.lights.bind(scene, this.config);
+    this.steeringWheel = body.getObjectByName('SteeringWheel') || scene.getObjectByName('SteeringWheel') || null;
+
     scene.traverse(o => {
       if (!(o instanceof THREE.Mesh)) return;
+      // Normalise rear cabin window glass tint on R34 from source maroon to dark neutral automotive tint
+      if (o.name === 'Body_36' && o.material) {
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+          if (m && 'color' in m && (m as any).color) {
+            (m as any).color.setHex(0x1e272c);
+          }
+        }
+      }
+
       o.castShadow = true;
       o.receiveShadow = true;
       this.geometries.add(o.geometry);
       for (const material of Array.isArray(o.material) ? o.material : [o.material]) {
         this.materials.add(material);
+        this.originalOpacity.set(material, ('opacity' in material && typeof (material as any).opacity === 'number') ? (material as any).opacity : 1.0);
+        this.originalTransparent.set(material, material.transparent);
         for (const value of Object.values(material)) {
           if (value instanceof THREE.Texture) this.textures.add(value);
         }
@@ -103,6 +119,22 @@ export class PlayerVehicleModel {
     this.ready = true;
   }
 
+  setOpacity(fadeFactor: number) {
+    const factor = THREE.MathUtils.clamp(fadeFactor, 0, 1);
+    for (const material of this.materials) {
+      if ('opacity' in material) {
+        const baseOpacity = this.originalOpacity.get(material) ?? 1.0;
+        (material as any).opacity = baseOpacity * factor;
+        if (factor < 0.999) {
+          (material as any).transparent = true;
+        } else {
+          (material as any).transparent = this.originalTransparent.get(material) ?? false;
+          (material as any).opacity = baseOpacity;
+        }
+      }
+    }
+  }
+
   animate(pose: VehiclePose, speed: number, brake: number, night: number) {
     const cg = this.config.centerOfGravity;
     this.body.position.y = cg + pose.heave;
@@ -123,7 +155,16 @@ export class PlayerVehicleModel {
       this.steer[i].rotation.set(0, i < 2 ? -wheelSteeringAngle(this.config, pose.steering, i) : 0, 0);
       if (this.wheels[i]) this.wheels[i].rotation.x = pose.wheelSpins[i];
     }
+    if (this.steeringWheel) {
+      this.steeringWheel.rotation.z = -pose.steering * 3.5;
+    }
     this.lights.update(night, brake, speed, this.config);
+  }
+
+  setCameraMode(mode: number) {
+    if (this.ready) {
+      this.cockpit.setCockpitActive(mode === 3);
+    }
   }
 
   updateCockpit(telemetry: CockpitTelemetry, dt: number) {
@@ -139,9 +180,12 @@ export class PlayerVehicleModel {
   }
 
   dispose() {
+    this.setOpacity(1.0);
     this.geometries.forEach(g => g.dispose());
     this.materials.forEach(m => m.dispose());
     this.textures.forEach(t => t.dispose());
+    this.originalOpacity.clear();
+    this.originalTransparent.clear();
     this.lights.dispose();
     this.cockpit.dispose();
     this.group.removeFromParent();

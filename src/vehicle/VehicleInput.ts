@@ -12,9 +12,9 @@ export class VehicleInput {
     const highway = clamp(Math.abs(speed) / 35, 0, 1);
     const rise = lerp(config.steering.inputRate, config.steering.highwayInputRate, highway);
     const isReversing = demand !== 0 && (demand * this.steering < 0);
-    const rate = demand === 0 ? config.steering.returnRate : (isReversing ? Math.max(rise * 2.5, config.steering.returnRate) : rise);
+    const rate = demand === 0 ? config.steering.returnRate : (isReversing ? Math.max(rise * 2.8, 22) : rise);
     this.steering = damp(this.steering, demand, rate, dt);
-    if(demand===0&&Math.abs(this.steering)<1e-4)this.steering=0;
+    if (demand === 0 && Math.abs(this.steering) < 1e-4) this.steering = 0;
     this.throttle = damp(this.throttle, Number(keys.throttle), keys.throttle ? config.engine.throttleResponse : config.engine.throttleRelease, dt);
     this.brake = damp(this.brake, Number(keys.brake), 10, dt);
     this.handbrake = damp(this.handbrake, Number(keys.handbrake), 12, dt);

@@ -1,0 +1,54 @@
+{
+  "modelId": "bmw_m4_gt3_evo",
+  "name": "BMW M4 GT3 EVO (G82)",
+  "competitionYear": 2025,
+  "runtimeBytes": 10702272,
+  "bodyMeshes": 226,
+  "wheelMeshes": 16,
+  "caliperMeshes": 4,
+  "steerMeshes": 46,
+  "wheelPositions": [
+    [
+      -0.808,
+      0.341,
+      -1.57
+    ],
+    [
+      0.808,
+      0.341,
+      -1.57
+    ],
+    [
+      -0.795,
+      0.359,
+      1.337
+    ],
+    [
+      0.795,
+      0.359,
+      1.337
+    ]
+  ],
+  "wheelRadii": [
+    0.345,
+    0.345,
+    0.345,
+    0.345
+  ],
+  "steeringWheelPivot": [
+    -0.311,
+    0.76,
+    -0.051
+  ],
+  "driverEyePosition": [
+    -0.355,
+    0.985,
+    -0.12
+  ],
+  "hoodCameraPosition": [
+    0,
+    0.98,
+    -1.45
+  ],
+  "materialsCount": 292
+}

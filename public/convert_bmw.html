@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BMW GLB Reconstructor</title>
+</head>
+<body>
+  <h1>BMW M4 GT3 EVO Material Reconstructor</h1>
+  <div id="status">Initializing...</div>
+  <script type="module">
+    import * as THREE from '/node_modules/three/build/three.module.js';
+    import { FBXLoader } from '/node_modules/three/examples/jsm/loaders/FBXLoader.js';
+    import { GLTFExporter } from '/node_modules/three/examples/jsm/exporters/GLTFExporter.js';
+
+    const statusEl = document.getElementById('status');
+    function log(msg) {
+      console.log(msg);
+      statusEl.textContent = msg;
+    }
+
+    async function runConversion() {
+      try {
+        log('Loading textures...');
+        const texLoader = new THREE.TextureLoader();
+        const basePath = '/models/bmw_source_raw/';
+
+        function loadTex(file, isColor = false) {
+          if (!file) return null;
+          const tex = texLoader.load(basePath + file);
+          tex.wrapS = THREE.RepeatWrapping;
+          tex.wrapT = THREE.RepeatWrapping;
+          tex.colorSpace = isColor ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+          return tex;
+        }
+
+        // Texture definitions
+        const carbonDiff = loadTex('common_carbon05_black_diff.png', true);
+        const carbonNorm = loadTex('common_carbon05_norm.png', false);
+
+        const extDiff = loadTex('TEX_Details_EXT_D.png', true);
+        const extNorm = loadTex('TEX_Details_EXT_N.png', false);
+        const extArm = loadTex('TEX_Details_EXT_ARM.png', false);
+
+        const intDiff = loadTex('TEX_Details_INT_D.png', true);
+        const intNorm = loadTex('TEX_Details_INT_N.png', false);
+        const intArm = loadTex('TEX_Details_INT_ARM.png', false);
+
+        const matDiff = loadTex('TEX_Details_MAT_D.png', true);
+        const matArm = loadTex('TEX_Details_MAT_ARM.png', false);
+
+        const chassisDiff = loadTex('TEX_Details_Chassis_0001_D.png', true);
+        const chassisNorm = loadTex('TEX_Details_Chassis_0001_N.png', false);
+        const chassisArm = loadTex('TEX_Details_Chassis_0001_ARM.png', false);
+
+        const engDiff = loadTex('TEX_Details_Engine_D.png', true);
+        const engNorm = loadTex('TEX_Details_Engine_N.png', false);
+        const engArm = loadTex('TEX_Details_Engine_ARM.png', false);
+
+        const gridDiff = loadTex('TEX_Details_Grid_01_D.png', true);
+        const gridNorm = loadTex('TEX_Details_Grid_01_N.png', false);
+        const gridArm = loadTex('TEX_Details_Grid_01_ARM.png', false);
+
+        const add1Diff = loadTex('TEX_Details_Add_01_D.png', true);
+        const add1Norm = loadTex('TEX_Details_Add_01_N.png', false);
+        const add1Arm = loadTex('TEX_Details_Add_01_ARM.png', false);
+
+        const add3Diff = loadTex('TEX_Details_Add_03_D.png', true);
+        const add3Norm = loadTex('TEX_Details_Add_03_N.png', false);
+        const add3Arm = loadTex('TEX_Details_Add_03_ARM.png', false);
+
+        const add4Diff = loadTex('TEX_Details_Add_04_D.png', true);
+        const add4Arm = loadTex('TEX_Details_Add_04_ARM.png', false);
+
+        const lightDiff = loadTex('TEX_Light_D.png', true);
+        const lightNorm = loadTex('TEX_Light_N.png', false);
+        const lightArm = loadTex('TEX_Light_ARM.png', false);
+
+        const alphaDiff = loadTex('TEX_Alpha_01_D.png', true);
+        const glassTex = loadTex('Glass.png', true);
+
+        const wheelDiff = loadTex('BMW_M4GT3_2022_Wheel1A_DiffuseAOSO.png', true) || loadTex('Wheel1A_DiffuseAOSO.png', true);
+        const wheelNorm = loadTex('BMW_M4GT3_2022_Wheel1A_Normal.png', false);
+        const wheelArm = loadTex('BMW_M4GT3_2022_Wheel1A_Material.png', false);
+
+        const brakeDiff = loadTex('TEX_Tire_Brake_D.png', true);
+        const brakeNorm = loadTex('TEX_Tire_Brake_N.png', false);
+        const brakeArm = loadTex('TEX_Tire_Brake_ARM.png', false);
+
+        const diskDiff = loadTex('TEX_Tire_Disk_D.png', true);
+        const diskNorm = loadTex('TEX_Tire_Disk_N.png', false);
+        const diskArm = loadTex('TEX_Tire_Disk_ARM.png', false);
+
+        const hubDiff = loadTex('TEX_Tire_Hub_D.png', true);
+        const hubNorm = loadTex('TEX_Tire_Hub_N.png', false);
+        const hubArm = loadTex('TEX_Tire_Hub_ARM.png', false);
+
+        // Build authentic PBR Material Dictionary matching FBX
+        const materialDict = new Map();
+
+        // 1. Body Paint (Source FBX Diffuse: [0.000, 0.003, 0.003] deep black racing finish)
+        materialDict.set('BMW:MAT_GT3_EVO_car_paint1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Car_Paint',
+          color: new THREE.Color(0.002, 0.003, 0.004),
+          roughness: 0.18,
+          metalness: 0.12,
+        }));
+
+        // 2. Carbon Fiber
+        materialDict.set('carbon_1:BMW_M4_GT3_EVO_Carbon1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Carbon_Fiber',
+          color: new THREE.Color(0.9, 0.9, 0.9),
+          map: carbonDiff,
+          normalMap: carbonNorm,
+          normalScale: new THREE.Vector2(1.0, 1.0),
+          roughness: 0.32,
+          metalness: 0.15,
+        }));
+
+        // 3. Exterior Details
+        materialDict.set('BMW:MAT_Details_EXT1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Details_EXT',
+          color: new THREE.Color(1, 1, 1),
+          map: extDiff,
+          normalMap: extNorm,
+          roughnessMap: extArm,
+          metalnessMap: extArm,
+          aoMap: extArm,
+          roughness: 0.5,
+          metalness: 0.2,
+        }));
+
+        // 4. Interior Cockpit Details
+        materialDict.set('BMW:MAT_Details_INT1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Details_INT',
+          color: new THREE.Color(1, 1, 1),
+          map: intDiff,
+          normalMap: intNorm,
+          roughnessMap: intArm,
+          metalnessMap: intArm,
+          aoMap: intArm,
+          roughness: 0.65,
+          metalness: 0.15,
+        }));
+
+        // 5. Interior Carbon Tub & Floor
+        materialDict.set('BMW:MAT_Details_MAT1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Details_MAT',
+          color: new THREE.Color(1, 1, 1),
+          map: matDiff,
+          roughnessMap: matArm,
+          metalnessMap: matArm,
+          roughness: 0.55,
+          metalness: 0.2,
+        }));
+
+        // 6. Chassis & Underbody
+        materialDict.set('BMW:MAT_Details_Chassis1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Details_Chassis',
+          color: new THREE.Color(1, 1, 1),
+          map: chassisDiff,
+          normalMap: chassisNorm,
+          roughnessMap: chassisArm,
+          metalnessMap: chassisArm,
+          roughness: 0.6,
+          metalness: 0.3,
+        }));
+
+        // 7. Engine Details
+        materialDict.set('BMW:MAT_Details_Engine1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Details_Engine',
+          color: new THREE.Color(1, 1, 1),
+          map: engDiff,
+          normalMap: engNorm,
+          roughnessMap: engArm,
+          metalnessMap: engArm,
+          roughness: 0.5,
+          metalness: 0.4,
+        }));
+
+        // 8. Grids & Louvres
+        materialDict.set('BMW:MAT_Details_Grid_01_002', new THREE.MeshStandardMaterial({
+          name: 'BMW_Details_Grid',
+          color: new THREE.Color(1, 1, 1),
+          map: gridDiff,
+          normalMap: gridNorm,
+          roughnessMap: gridArm,
+          metalnessMap: gridArm,
+          roughness: 0.4,
+          metalness: 0.5,
+        }));
+
+        // 9. Add-on Electronics 1, 2, 3
+        materialDict.set('BMW:MAT_Details_Add_02', new THREE.MeshStandardMaterial({
+          name: 'BMW_Details_Add_01',
+          color: new THREE.Color(1, 1, 1),
+          map: add1Diff,
+          normalMap: add1Norm,
+          roughnessMap: add1Arm,
+          metalnessMap: add1Arm,
+          roughness: 0.5,
+          metalness: 0.2,
+        }));
+
+        materialDict.set('BMW:MAT_Details_Add_04', new THREE.MeshStandardMaterial({
+          name: 'BMW_Details_Add_03',
+          color: new THREE.Color(1, 1, 1),
+          map: add3Diff,
+          normalMap: add3Norm,
+          roughnessMap: add3Arm,
+          metalnessMap: add3Arm,
+          roughness: 0.5,
+          metalness: 0.2,
+        }));
+
+        materialDict.set('BMW:MAT_Details_Add_06', new THREE.MeshStandardMaterial({
+          name: 'BMW_Details_Add_04',
+          color: new THREE.Color(1, 1, 1),
+          map: add4Diff,
+          roughnessMap: add4Arm,
+          metalnessMap: add4Arm,
+          roughness: 0.5,
+          metalness: 0.2,
+        }));
+
+        // 10. Lights
+        materialDict.set('BMW:MAT_Lights1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Lights',
+          color: new THREE.Color(1, 1, 1),
+          map: lightDiff,
+          normalMap: lightNorm,
+          roughnessMap: lightArm,
+          metalnessMap: lightArm,
+          roughness: 0.2,
+          metalness: 0.5,
+        }));
+
+        // 11. Alpha Decals
+        materialDict.set('BMW:MAT_Alpha_01_002', new THREE.MeshStandardMaterial({
+          name: 'BMW_Alpha_Decal',
+          color: new THREE.Color(1, 1, 1),
+          map: alphaDiff,
+          transparent: true,
+          alphaTest: 0.15,
+          roughness: 0.4,
+          metalness: 0.1,
+        }));
+
+        // 12. Glass
+        const windGlass = new THREE.MeshStandardMaterial({
+          name: 'BMW_Windshield_Glass',
+          color: new THREE.Color(0.04, 0.08, 0.12),
+          map: glassTex,
+          transparent: true,
+          opacity: 0.38,
+          roughness: 0.05,
+          metalness: 0.9,
+          depthWrite: false,
+        });
+        materialDict.set('glass:MAT_Glass1', windGlass);
+        materialDict.set('BMW:MAT_Glass_004', windGlass);
+
+        const aeroGlass = new THREE.MeshStandardMaterial({
+          name: 'BMW_Aero_Glass_Dark',
+          color: new THREE.Color(0.01, 0.02, 0.03),
+          transparent: true,
+          opacity: 0.45,
+          roughness: 0.08,
+          metalness: 0.85,
+          depthWrite: false,
+        });
+        materialDict.set('BMW:MAT_Glass_002', aeroGlass);
+
+        // 13. Wheels & Tires
+        const wheelMat = new THREE.MeshStandardMaterial({
+          name: 'BMW_Wheel_Tire',
+          color: new THREE.Color(1, 1, 1),
+          map: wheelDiff,
+          normalMap: wheelNorm,
+          roughnessMap: wheelArm,
+          metalnessMap: wheelArm,
+          roughness: 0.65,
+          metalness: 0.25,
+        });
+        materialDict.set('Tire:BMW_M4GT3_2022_Wheel1A_3D_3DWheel1A_Material1', wheelMat);
+        materialDict.set('__DEFAULT', wheelMat);
+
+        // 14. Brakes & Calipers
+        materialDict.set('BMW:MAT_Tire_Brake1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Brake_Caliper',
+          color: new THREE.Color(1, 1, 1),
+          map: brakeDiff,
+          normalMap: brakeNorm,
+          roughnessMap: brakeArm,
+          metalnessMap: brakeArm,
+          roughness: 0.35,
+          metalness: 0.6,
+        }));
+
+        materialDict.set('BMW:MAT_Tire_Disk1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Brake_Disk',
+          color: new THREE.Color(1, 1, 1),
+          map: diskDiff,
+          normalMap: diskNorm,
+          roughnessMap: diskArm,
+          metalnessMap: diskArm,
+          roughness: 0.45,
+          metalness: 0.7,
+        }));
+
+        materialDict.set('BMW:MAT_Tire_Hub1', new THREE.MeshStandardMaterial({
+          name: 'BMW_Wheel_Hub',
+          color: new THREE.Color(1, 1, 1),
+          map: hubDiff,
+          normalMap: hubNorm,
+          roughnessMap: hubArm,
+          metalnessMap: hubArm,
+          roughness: 0.4,
+          metalness: 0.6,
+        }));
+
+        // Load FBX Model
+        log('Loading FBX Model...');
+        const fbxLoader = new FBXLoader();
+        const fbx = await new Promise((resolve, reject) => {
+          fbxLoader.load(basePath + 'FINAL_MODEL_GT325.fbx', resolve, undefined, reject);
+        });
+
+        log('FBX loaded. Setting up rig and materials...');
+
+        const rot180 = new THREE.Matrix4().makeRotationY(Math.PI);
+        const rootScene = new THREE.Group();
+        rootScene.name = 'BMW_M4_GT3_EVO';
+
+        const bodyGroup = new THREE.Group();
+        bodyGroup.name = 'Body';
+        rootScene.add(bodyGroup);
+
+        const wheelDefs = [
+          { index: 0, name: 'FL', pos: [-0.808, 0.341, -1.570] },
+          { index: 1, name: 'FR', pos: [ 0.808, 0.341, -1.570] },
+          { index: 2, name: 'RL', pos: [-0.795, 0.359,  1.337] },
+          { index: 3, name: 'RR', pos: [ 0.795, 0.359,  1.337] },
+        ];
+
+        const wheelMounts = [];
+        const wheelObjects = [];
+        const caliperObjects = [];
+
+        for (const def of wheelDefs) {
+          const mount = new THREE.Group();
+          mount.name = `WheelMount${def.index}`;
+          mount.position.set(def.pos[0], def.pos[1], def.pos[2]);
+
+          const wheel = new THREE.Group();
+          wheel.name = `Wheel${def.index}`;
+          mount.add(wheel);
+
+          const caliper = new THREE.Group();
+          caliper.name = `Caliper${def.index}`;
+          mount.add(caliper);
+
+          rootScene.add(mount);
+          wheelMounts.push(mount);
+          wheelObjects.push(wheel);
+          caliperObjects.push(caliper);
+        }
+
+        const steeringWheelGroup = new THREE.Group();
+        steeringWheelGroup.name = 'SteeringWheel';
+        const steerPivot = [-0.311, 0.760, -0.051];
+        steeringWheelGroup.position.set(steerPivot[0], steerPivot[1], steerPivot[2]);
+        bodyGroup.add(steeringWheelGroup);
+
+        function getWheelIndex(node) {
+          let curr = node;
+          while (curr) {
+            const name = curr.name.toLowerCase();
+            if (name.includes('brake_fl') || name.includes('brake_fr') || name.includes('brake_rl') || name.includes('brake_rr') || name.includes('calliper')) {
+              return -1;
+            }
+            if (name.includes('wheel_front_l') || name.includes('hub_l_0000_001') && !name.includes('bmwsm_hub_l')) return 0;
+            if (name.includes('wheel_front_r') || name.includes('hub_r_0000_001') && !name.includes('bmwsm_hub_r')) return 1;
+            if (name.includes('wheel_rear_l') || name.includes('bmwsm_hub_l')) return 2;
+            if (name.includes('wheel_rear_r') || name.includes('bmwsm_hub_r')) return 3;
+            curr = curr.parent;
+          }
+          return -1;
+        }
+
+        function getCaliperIndex(node) {
+          const name = node.name.toLowerCase();
+          if (name.includes('brake_fl') || name.includes('calliper') && name.includes('fl')) return 0;
+          if (name.includes('brake_fr') || name.includes('calliper') && name.includes('fr')) return 1;
+          if (name.includes('brake_rl') || name.includes('calliper') && name.includes('rl')) return 2;
+          if (name.includes('brake_rr') || name.includes('calliper') && name.includes('rr')) return 3;
+          return -1;
+        }
+
+        function isSteeringWheelNode(node) {
+          let curr = node;
+          while (curr) {
+            if (curr.name.toLowerCase().includes('steeringwheel') || curr.name.toLowerCase().includes('anc_steering')) return true;
+            curr = curr.parent;
+          }
+          return false;
+        }
+
+        // Crucial: compute world matrices for the entire FBX hierarchy
+        fbx.updateMatrixWorld(true);
+
+        const meshes = [];
+        fbx.traverse(obj => {
+          if (obj.isMesh) meshes.push(obj);
+        });
+
+        log(`Processing ${meshes.length} meshes with full hierarchy preservation...`);
+
+        for (const mesh of meshes) {
+          const worldMatrix = new THREE.Matrix4().multiplyMatrices(rot180, mesh.matrixWorld);
+
+          const origMatName = mesh.material ? (Array.isArray(mesh.material) ? mesh.material[0]?.name : mesh.material.name) : '';
+          let targetMat = materialDict.get(origMatName);
+
+          if (!targetMat) {
+            const lower = origMatName.toLowerCase();
+            if (lower.includes('paint') || lower.includes('body')) targetMat = materialDict.get('BMW:MAT_GT3_EVO_car_paint1');
+            else if (lower.includes('carbon')) targetMat = materialDict.get('carbon_1:BMW_M4_GT3_EVO_Carbon1');
+            else if (lower.includes('glass')) targetMat = materialDict.get('glass:MAT_Glass1');
+            else if (lower.includes('wheel') || lower.includes('tire')) targetMat = materialDict.get('Tire:BMW_M4GT3_2022_Wheel1A_3D_3DWheel1A_Material1');
+            else if (lower.includes('int')) targetMat = materialDict.get('BMW:MAT_Details_INT1');
+            else if (lower.includes('ext')) targetMat = materialDict.get('BMW:MAT_Details_EXT1');
+            else targetMat = materialDict.get('BMW:MAT_Details_EXT1');
+          }
+
+          const geom = mesh.geometry.clone();
+          const newMesh = new THREE.Mesh(geom, targetMat);
+          newMesh.name = mesh.name;
+          newMesh.castShadow = true;
+          newMesh.receiveShadow = true;
+
+          const wheelIdx = getWheelIndex(mesh);
+          const caliperIdx = getCaliperIndex(mesh);
+          const isSteer = isSteeringWheelNode(mesh);
+
+          if (wheelIdx >= 0) {
+            const wMount = wheelMounts[wheelIdx];
+            const toMount = new THREE.Matrix4().makeTranslation(-wMount.position.x, -wMount.position.y, -wMount.position.z);
+            const m = new THREE.Matrix4().multiplyMatrices(toMount, worldMatrix);
+            newMesh.geometry.applyMatrix4(m);
+            newMesh.geometry.computeVertexNormals();
+            wheelObjects[wheelIdx].add(newMesh);
+          } else if (caliperIdx >= 0) {
+            const cMount = wheelMounts[caliperIdx];
+            const toMount = new THREE.Matrix4().makeTranslation(-cMount.position.x, -cMount.position.y, -cMount.position.z);
+            const m = new THREE.Matrix4().multiplyMatrices(toMount, worldMatrix);
+            newMesh.geometry.applyMatrix4(m);
+            newMesh.geometry.computeVertexNormals();
+            caliperObjects[caliperIdx].add(newMesh);
+          } else if (isSteer) {
+            const toPivot = new THREE.Matrix4().makeTranslation(-steerPivot[0], -steerPivot[1], -steerPivot[2]);
+            const m = new THREE.Matrix4().multiplyMatrices(toPivot, worldMatrix);
+            newMesh.geometry.applyMatrix4(m);
+            newMesh.geometry.computeVertexNormals();
+            steeringWheelGroup.add(newMesh);
+          } else {
+            newMesh.geometry.applyMatrix4(worldMatrix);
+            newMesh.geometry.computeVertexNormals();
+            bodyGroup.add(newMesh);
+          }
+        }
+
+        log('Exporting GLB with embedded PBR textures via GLTFExporter...');
+        const exporter = new GLTFExporter();
+        const glbArrayBuffer = await new Promise((resolve, reject) => {
+          exporter.parse(
+            rootScene,
+            resolve,
+            reject,
+            { binary: true, embedImages: true }
+          );
+        });
+
+        log(`GLB generated successfully: ${glbArrayBuffer.byteLength} bytes. Uploading to server...`);
+        
+        const res = await fetch('/save-glb', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: glbArrayBuffer,
+        });
+        
+        if (!res.ok) throw new Error('Failed to save GLB on server: HTTP ' + res.status);
+        const result = await res.json();
+        
+        log(`RECONSTRUCTION_AND_SAVE_SUCCESS (${(result.bytes / 1024 / 1024).toFixed(2)} MB)`);
+        window.conversionDone = true;
+      } catch (err) {
+        console.error('Conversion error:', err);
+        statusEl.textContent = 'Error: ' + err.message;
+        window.conversionError = err.message;
+      }
+    }
+
+    runConversion();
+  </script>
+</body>
+</html>

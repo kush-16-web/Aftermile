@@ -38,8 +38,29 @@ export class VehicleDebug {
   }
   private get(path:string):number{return path.split('.').reduce((o,k)=>o[k],this.vehicle.config as any);}
   private set(path:string,value:number){const parts=path.split('.'),key=parts.pop()!;parts.reduce((o,k)=>o[k],this.vehicle.config as any)[key]=value;}
-  toggle(){this.panel.hidden=!this.panel.hidden;this.update();}
+  toggle(){this.panel.hidden=!this.panel.hidden;}
   update(){if(this.panel.hidden)return;const p=this.vehicle.physics,deg=180/Math.PI;
-    this.telemetry.textContent=[`Speed       ${(p.speed*3.6).toFixed(1)} km/h`,`RPM / gear  ${Math.round(p.rpm)} / ${p.speed<-.1?'R':p.gear}`,`Steer input ${p.input.steering.toFixed(3)}`,`Steer angle ${(p.steering*deg).toFixed(2)}° / ${(p.maxSteeringAngle*deg).toFixed(2)}°`,`Yaw rate    ${(p.yawRate*deg).toFixed(2)}°/s`,`Lateral g   ${(p.lateralAcceleration/9.81).toFixed(2)}`,`Body slip   ${p.bodyLateralVelocity.toFixed(2)} m/s`,`Roll/pitch  ${(p.roll*deg).toFixed(2)}° / ${(p.pitch*deg).toFixed(2)}°`,`Suspension  ${(p.heave*1000).toFixed(1)} mm`,`Brake/load  ${p.brakeAmount.toFixed(2)} / ${p.throttle.toFixed(2)}`,`Headlights  ${this.vehicle.model.lights.mode}`].join('\n');
+    const w = p.wheelsTelemetry;
+    const labels = ['FL', 'FR', 'RL', 'RR'];
+    const wheelLines = w.map((t, i) => 
+      `${labels[i]}: Slip ${(t.slipAngle * deg).toFixed(1)}° | Fx ${Math.round(t.fx)}N | Fy ${Math.round(t.fy)}N | Cap ${Math.round(t.capacity)}N`
+    );
+
+    this.telemetry.textContent=[
+      `=== DYNAMICS: [ ${p.dynamicState} ] ===`,
+      `Speed       ${(p.speed*3.6).toFixed(1)} km/h (${p.speed.toFixed(2)} m/s)`,
+      `RPM / gear  ${Math.round(p.rpm)} / ${p.speed<-.1?'R':p.gear}`,
+      `TC Cut / ABS ${(p.tcCut * 100).toFixed(0)}% / ${p.absActive ? 'ACTIVE' : 'OFF'}`,
+      `Steer input ${p.input.steering.toFixed(3)}`,
+      `Steer angle ${(p.steering*deg).toFixed(2)}° / ${(p.maxSteeringAngle*deg).toFixed(2)}°`,
+      `Yaw rate    ${(p.yawRate*deg).toFixed(2)}°/s`,
+      `Lateral g   ${(p.lateralAcceleration/9.81).toFixed(2)} g`,
+      `Body slip   ${p.bodyLateralVelocity.toFixed(2)} m/s`,
+      `Overall slip ${(p.slip * 100).toFixed(1)}%`,
+      `--- WHEEL TELEMETRY ---`,
+      ...wheelLines,
+      `--- CONTACT ENERGY ---`,
+      `Smoke E: FL ${p.smokeEnergy[0].toFixed(2)} | FR ${p.smokeEnergy[1].toFixed(2)} | RL ${p.smokeEnergy[2].toFixed(2)} | RR ${p.smokeEnergy[3].toFixed(2)}`
+    ].join('\n');
   }
 }

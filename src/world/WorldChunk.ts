@@ -131,12 +131,17 @@ export class WorldChunk {
       }
     }
 
-    // 5. COASTAL BRIDGE STRUCTURE (Thick Box-Girder Deck, Diamond Pylons & Fan Stay Cables)
+    // 5. COASTAL BRIDGE STRUCTURE (Under-Deck Structural Box-Girder, Pylons & Stay Cables)
     for (let s = this.start + 10; s < this.start + CHUNK; s += 20) {
       const bridge = road.isBridge(s), tunnel = road.isTunnel(s);
       if (bridge) {
-        // Continuous Heavy Structural Box-Girder Deck (2.4m thickness, 19.6m width)
-        at('bridge-box-deck', s, 0, -1.2, 19.6, 2.4, 20.1, m.concrete);
+        // Continuous Heavy Structural Box-Girder Deck (Top sits safely beneath asphalt at y = -0.25m)
+        at('bridge-box-deck', s, 0, -1.45, 19.6, 2.4, 20.1, m.concrete);
+
+        // Thin, authentic dark metallic bridge expansion joints spaced every 80m
+        if (Math.floor(s / 20) % 4 === 0) {
+          at('bridge-expansion-joint', s, 0, 0.027, 16.0, 0.02, 0.25, m.dark);
+        }
 
         // Heavy concrete piers extending into the sea bed (depth -22m)
         if (Math.floor(s / 20) % 4 === 0) {

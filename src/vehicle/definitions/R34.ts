@@ -35,7 +35,7 @@ export const R34Config: VehicleConfig = {
       [8.3333,  0.38],  // 30
       [16.6667, 0.22],  // 60
       [27.7778, 0.11],  // 100
-      [36.1111, 0.075], // 130
+      [36.1111, 0.070], // 130
       [44.4444, 0.055], // 160
       [55.5556, 0.038], // 200
       [73,      0.028], // 263
@@ -91,4 +91,29 @@ export const R34Config: VehicleConfig = {
     ],
     gain: .82, minPitch: .75, maxPitch: 1.4, rpmResponse: 14, loadResponse: 9,
   },
+  displaySpecs: {
+    category: '1999 · LEGENDARY GT',
+    engineName: 'NISSAN RB26DETT',
+    power: '280 PS (276 hp) / Tuned',
+    displacement: '2,568 cm³',
+    dimensions: '4,600 × 1,785 × 1,360 mm',
+    wheelbase: '2,665 mm',
+    wheels: '18" FORGED ALLOY',
+    drivetrain: 'ATTESA E-TS All-Wheel Drive',
+    transmission: '6-Speed Manual (Getrag 233)',
+    highlights: [
+      'ATTESA E-TS PRO AWD SYSTEM',
+      'SUPER HICAS 4-WHEEL STEERING',
+      'TWIN CERAMIC TURBOCHARGERS',
+      'MULTIFUNCTION COCKPIT MFD',
+    ],
+    gameplayCharacteristics: {
+      archetype: 'ROAD / TUNED GT',
+      handling: 'Rear-biased progressive chassis movement with high feedback',
+      braking: 'Balanced road/track Brembo deceleration with stable weight transfer',
+      aero: 'Classic GT aerodynamic balance with adjustable rear wing',
+      suspension: 'Road-compliant multi-link setup with controlled body pitch and roll',
+    },
+  },
 };
+

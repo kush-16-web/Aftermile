@@ -1,19 +1,22 @@
 import { damp } from '../core/math.ts';
 
 export class Companion {
-  context: CanvasRenderingContext2D;
+  context: CanvasRenderingContext2D | null = null;
   pulse = 0;
   sweepAngle = 0;
   dangerLevel = 0;
   statusText = 'CLEAR';
 
-  constructor(public canvas: HTMLCanvasElement) {
-    canvas.width = 160;
-    canvas.height = 100;
-    this.context = canvas.getContext('2d')!;
+  constructor(public canvas?: HTMLCanvasElement | null) {
+    if (canvas) {
+      canvas.width = 160;
+      canvas.height = 100;
+      this.context = canvas.getContext('2d');
+    }
   }
 
   update(dt: number, time: number, danger: number, fuel: number, weather: string, clean: number, reduced: boolean) {
+    if (!this.context) return;
     this.dangerLevel = damp(this.dangerLevel, danger, 4, dt);
     this.sweepAngle = (this.sweepAngle + dt * (danger > 0.2 ? 4.5 : 2.0)) % (Math.PI * 2);
     this.pulse = (this.pulse + dt * (danger > 0.2 ? 6.0 : 1.5)) % (Math.PI * 2);

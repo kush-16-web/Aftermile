@@ -2,6 +2,9 @@ import type { Settings, SettingsData } from '../systems/Settings.ts';
 import type { City, WeatherMode } from '../weather/Weather.ts';
 import { weatherNames, moonLabel, lunarPhase } from '../weather/Weather.ts';
 import { cameraNames } from '../vehicle/CameraController.ts';
+import { getAllVehicles, getVehicleConfig } from '../vehicle/VehicleRegistry.ts';
+import type { VehicleConfig } from '../vehicle/VehicleConfig.ts';
+
 
 const icon = (name: string) => {
   const paths: Record<string, string> = {
@@ -158,6 +161,61 @@ function generateTachometerMarkup(): string {
   `;
 }
 
+export function getNavSvg(iconName: string): string {
+  switch (iconName) {
+    case 'turn_right':
+    case 'right':
+    case '↱':
+      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 26V15a5 5 0 0 1 5-5h10"/>
+        <polyline points="18 4 25 10 18 16"/>
+      </svg>`;
+    case 'turn_left':
+    case 'left':
+    case '↰':
+      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 26V15a5 5 0 0 0-5-5H7"/>
+        <polyline points="14 4 7 10 14 16"/>
+      </svg>`;
+    case 'keep_right':
+    case 'fork_right':
+    case '↗':
+      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="26" x2="22" y2="8"/>
+        <polyline points="13 7 23 7 22 17"/>
+      </svg>`;
+    case 'keep_left':
+    case 'fork_left':
+    case '↖':
+      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="20" y1="26" x2="10" y2="8"/>
+        <polyline points="19 7 9 7 10 17"/>
+      </svg>`;
+    case 'bridge':
+    case '▰':
+      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 21h24M6 21V14a10 10 0 0 1 20 0v7M11 21v-5M21 21v-5"/>
+        <line x1="16" y1="26" x2="16" y2="9"/>
+        <polyline points="12 13 16 9 20 13"/>
+      </svg>`;
+    case 'tunnel':
+    case '▱':
+      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 25V14a10 10 0 0 1 20 0v11"/>
+        <line x1="16" y1="26" x2="16" y2="10"/>
+        <polyline points="12 14 16 10 20 14"/>
+      </svg>`;
+    case 'straight':
+    case 'continue':
+    case '↑':
+    default:
+      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="16" y1="26" x2="16" y2="7"/>
+        <polyline points="9 14 16 6 23 14"/>
+      </svg>`;
+  }
+}
+
 export interface UIActions {
   start: (zen: boolean) => void;
   resume: () => void;
@@ -171,6 +229,37 @@ export interface UIActions {
   search: (query: string) => Promise<City[]>;
   city: (city: City) => Promise<void>;
   locate: () => Promise<void>;
+  getVoices?: () => { id: string; name: string; lang: string; isFemale: boolean }[];
+  selectVehicle?: (id: string) => Promise<void>;
+  getAvailableVehicles?: () => VehicleConfig[];
+  onOverlayChanged?: (overlay: string | null) => void;
+}
+
+
+export interface NavigationManeuver {
+  icon: string;
+  action: string;
+  distance: number;
+  location: string;
+  isFar?: boolean;
+}
+
+export interface MinimapSecondaryRoad {
+  points: { x: number; y: number }[];
+}
+
+export interface MinimapRoadLabel {
+  text: string;
+  x: number;
+  y: number;
+  angle?: number;
+}
+
+export interface NearbyPoi {
+  x: number;
+  y: number;
+  type: string;
+  label: string;
 }
 
 export interface HudState {
@@ -180,6 +269,7 @@ export interface HudState {
   fuel: number;
   distance: number;
   region: string;
+  roadName?: string;
   regionProgress: number;
   nextStation: number;
   temperature: number;
@@ -196,7 +286,11 @@ export interface HudState {
   damage: number;
   clean: number;
   navCurve?: { x: number; y: number; marker?: string }[];
+  secondaryRoads?: MinimapSecondaryRoad[];
+  roadLabels?: MinimapRoadLabel[];
   navEvent?: string;
+  activeManeuver?: NavigationManeuver;
+  nearbyPois?: NearbyPoi[];
 }
 
 export class UI {
@@ -205,7 +299,7 @@ export class UI {
   activeOverlay: string | null = null;
   previousOverlay: string | null = null;
   settingsTab = 'driving';
-  companionCanvas: HTMLCanvasElement;
+  companionCanvas: HTMLCanvasElement | null = null;
   lastToast = '';
   toastTimer = 0;
   cameraToastTimer = 0;
@@ -214,6 +308,8 @@ export class UI {
   lastGear = 'N';
   steadyDriveTimer = 0;
   smoothedRpm = 850;
+  private lastManeuverKey = '';
+  private maneuverSwapTimeout = 0;
   elements: Record<string, HTMLElement> = {};
   onScreenChanged: () => void = () => {};
 
@@ -269,49 +365,112 @@ export class UI {
 
       <!-- Minimalist Automotive Driving HUD -->
       <section id="hud" class="hud hidden" aria-label="Driving instruments">
-        <!-- Bottom-Left Driver HUD Zone (Route Preview stacked above Tachometer in corner) -->
+        <!-- TOP-LEFT INTEGRATED MINI ROUTE / MINIMAP -->
+        <div class="hud-minimap-container" id="hud-minimap" aria-label="Navigation Mini Route">
+          <div class="minimap-location-tag" id="minimap-region-name">CRESCENT BAY</div>
+          <svg class="minimap-field-svg" id="minimap-svg" viewBox="0 0 180 180" preserveAspectRatio="xMidYMid meet">
+            <defs>
+              <!-- Sleek Radar Dial Background Gradient -->
+              <radialGradient id="radarGlassGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#081420" stop-opacity="0.9"/>
+                <stop offset="65%" stop-color="#040a12" stop-opacity="0.95"/>
+                <stop offset="100%" stop-color="#02060b" stop-opacity="0.98"/>
+              </radialGradient>
+              <!-- Radar Sweep / Range Glow -->
+              <radialGradient id="radarScanCone" cx="90" cy="135" r="95" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.22"/>
+                <stop offset="45%" stop-color="#00f0ff" stop-opacity="0.08"/>
+                <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+              </radialGradient>
+              <!-- Route Gradient -->
+              <linearGradient id="miniRoadGrad" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+                <stop offset="30%" stop-color="#00f0ff" stop-opacity="0.95"/>
+                <stop offset="75%" stop-color="#00b4d8" stop-opacity="0.8"/>
+                <stop offset="100%" stop-color="#0077b6" stop-opacity="0.35"/>
+              </linearGradient>
+              <filter id="miniGlow" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="1.4" result="blur"/>
+                <feMerge>
+                  <feMergeNode in="blur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+              <!-- Clip path for circular radar disc -->
+              <clipPath id="radarDiscClip">
+                <circle cx="90" cy="90" r="76"/>
+              </clipPath>
+            </defs>
+
+            <!-- Outer Radar Bezel / Compass Ring -->
+            <circle cx="90" cy="90" r="82" fill="none" stroke="rgba(136, 190, 196, 0.18)" stroke-width="1.5"/>
+            <circle cx="90" cy="90" r="77" fill="none" stroke="rgba(0, 240, 255, 0.35)" stroke-width="1"/>
+
+            <!-- Radar Disc Content Clustered inside Clip -->
+            <g clip-path="url(#radarDiscClip)">
+              <!-- Disc Background -->
+              <circle cx="90" cy="90" r="76" fill="url(#radarGlassGrad)"/>
+
+              <!-- Ambient Geography / Coastal Demarcation underlay -->
+              <path d="M 14 90 Q 50 60 90 85 T 166 80 L 166 166 L 14 166 Z" fill="rgba(8, 26, 42, 0.35)"/>
+
+              <!-- Subtle Crosshair & Grid Ticks -->
+              <line x1="90" y1="14" x2="90" y2="166" stroke="rgba(136, 190, 196, 0.08)" stroke-width="1" stroke-dasharray="3 4"/>
+              <line x1="14" y1="90" x2="166" y2="90" stroke="rgba(136, 190, 196, 0.08)" stroke-width="1" stroke-dasharray="3 4"/>
+
+              <!-- Range Distance Rings (50m, 120m, 200m) -->
+              <circle cx="90" cy="135" r="38" fill="none" stroke="rgba(0, 240, 255, 0.12)" stroke-width="1" stroke-dasharray="2 3"/>
+              <circle cx="90" cy="135" r="72" fill="none" stroke="rgba(0, 240, 255, 0.08)" stroke-width="1" stroke-dasharray="2 4"/>
+              <circle cx="90" cy="135" r="105" fill="none" stroke="rgba(0, 240, 255, 0.05)" stroke-width="1" stroke-dasharray="2 5"/>
+
+              <!-- Forward Radar View Cone -->
+              <polygon points="90,135 45,30 135,30" fill="url(#radarScanCone)"/>
+
+              <!-- Dynamic Rotated Road Spline Trajectory (Heading-Up) -->
+              <g id="minimap-road-group">
+                <!-- Secondary connected / branching roads -->
+                <g id="minimap-secondary-roads"></g>
+                <!-- Road corridor underlay -->
+                <path id="minimap-road-bg" d="M 90 135 L 90 20" stroke="rgba(0, 240, 255, 0.15)" stroke-width="9" stroke-linecap="round" fill="none"/>
+                <!-- Active primary route line -->
+                <path id="minimap-road-path" d="M 90 135 L 90 20" stroke="url(#miniRoadGrad)" stroke-width="3.2" stroke-linecap="round" fill="none" filter="url(#miniGlow)"/>
+                <!-- Road Names / Street Labels -->
+                <g id="minimap-road-labels"></g>
+                <!-- Real World POIs -->
+                <g id="minimap-poi-group"></g>
+              </g>
+
+              <!-- Player Directional Chevron (Positioned at lower-center 90, 135) -->
+              <g id="minimap-player-marker" transform="translate(90, 135)">
+                <!-- Subtle pulse halo -->
+                <circle cx="0" cy="0" r="8.5" fill="rgba(0, 240, 255, 0.18)"/>
+                <!-- Player Delta Arrow -->
+                <polygon points="0,-8.5 -5,4.5 0,1.8 5,4.5" fill="#ffffff" stroke="#040a12" stroke-width="1.4"/>
+                <circle cx="0" cy="0" r="1.6" fill="#00f0ff"/>
+              </g>
+            </g>
+
+            <!-- Outer Compass Cardinal Markers -->
+            <text x="90" y="11" font-size="7.5" font-weight="800" fill="rgba(0, 240, 255, 0.85)" text-anchor="middle" font-family="'Avenir Next', sans-serif">N</text>
+            <text x="169" y="92.5" font-size="6.5" font-weight="700" fill="rgba(136, 190, 196, 0.55)" text-anchor="middle" font-family="'Avenir Next', sans-serif">E</text>
+            <text x="90" y="174" font-size="6.5" font-weight="700" fill="rgba(136, 190, 196, 0.55)" text-anchor="middle" font-family="'Avenir Next', sans-serif">S</text>
+            <text x="11" y="92.5" font-size="6.5" font-weight="700" fill="rgba(136, 190, 196, 0.55)" text-anchor="middle" font-family="'Avenir Next', sans-serif">W</text>
+          </svg>
+        </div>
+
+        <!-- TOP-CENTER VERTICAL NEXT MANEUVER GUIDANCE -->
+        <div class="hud-maneuver-hud" id="hud-maneuver-badge" aria-label="Next Navigation Maneuver">
+          <div class="maneuver-hud-content" id="maneuver-hud-content">
+            <div class="maneuver-arrow-hero" id="maneuver-icon">${getNavSvg('straight')}</div>
+            <div class="maneuver-action-text" id="maneuver-action">CONTINUE</div>
+            <div class="maneuver-distance-text" id="maneuver-dist">1.2 km</div>
+            <div class="maneuver-destination-text" id="maneuver-location">COASTAL HIGHWAY</div>
+          </div>
+        </div>
+
+        <!-- Bottom-Left Driver HUD Zone (Tachometer & Secondary Telemetry Cluster) -->
         <div class="hud-driver-zone" id="hud-driver-zone">
           <div class="driver-instruments-row">
-            <!-- Premium Route Preview Card (Compact in Bottom-Left Corner) -->
-            <div class="nav-strip" id="nav-strip" aria-label="Route Preview Ahead">
-              <div class="nav-header">
-                <div class="nav-info-block">
-                  <span class="nav-eyebrow" id="nav-region-name">CRESCENT BAY</span>
-                  <span id="nav-landmark" class="nav-landmark">HIGHWAY AHEAD</span>
-                </div>
-              </div>
-              <div class="nav-canvas-wrap">
-                <svg id="nav-svg" viewBox="0 0 200 60" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="navRoadGlow" x1="0" y1="1" x2="0" y2="0">
-                      <stop offset="0%" stop-color="#88bec4" stop-opacity="0.95"/>
-                      <stop offset="85%" stop-color="#88bec4" stop-opacity="0.4"/>
-                      <stop offset="100%" stop-color="#88bec4" stop-opacity="0.1"/>
-                    </linearGradient>
-                    <filter id="navGlow" x="-20%" y="-20%" width="140%" height="140%">
-                      <feGaussianBlur stdDeviation="1.5" result="blur" />
-                      <feMerge>
-                        <feMergeNode in="blur" />
-                        <feMergeNode in="SourceGraphic" />
-                      </feMerge>
-                    </filter>
-                  </defs>
-                  <!-- Road corridor outline -->
-                  <path id="nav-road-bg" d="M 100 50 L 100 8" stroke="rgba(255,255,255,0.06)" stroke-width="10" stroke-linecap="round" fill="none"/>
-                  <!-- Active road trajectory -->
-                  <path id="nav-road-path" d="M 100 50 L 100 8" stroke="url(#navRoadGlow)" stroke-width="3.2" stroke-linecap="round" fill="none" filter="url(#navGlow)"/>
-                  <!-- Event marker icon on path -->
-                  <g id="nav-marker-group"></g>
-                  <!-- Player vehicle chevron indicator (Safe margins, fully visible above route line) -->
-                  <polygon points="100,45 95,52 105,52" fill="#e7edef" stroke="rgba(6,12,18,0.85)" stroke-width="0.8"/>
-                </svg>
-              </div>
-              <div class="nav-footer">
-                <span class="nav-sub-label">ROUTE PREVIEW</span>
-                <span id="nav-distance-marker">350m AHEAD</span>
-              </div>
-            </div>
-
             <!-- Bottom-Left Circular Tachometer & Cluster -->
             <div class="hud-cluster-panel" id="hud-cluster-panel">
               ${generateTachometerMarkup()}
@@ -326,17 +485,28 @@ export class UI {
           <button id="pause-button"><kbd>ESC</kbd> Pause</button>
         </div>
 
-        <!-- Camera Mode Toast Badge -->
+        <!-- Camera Mode Badge (Bottom Center) -->
         <div class="camera-mode-badge hidden" id="camera-mode-badge">
-          <span class="camera-mode-text" id="camera-mode-text">COCKPIT</span>
+          <span class="camera-mode-text" id="camera-mode-text">CAMERA · CHASE</span>
         </div>
 
-        <!-- Road Assist Panel (Bottom Right) -->
-        <div class="companion-card" id="assist-card">
-          <canvas id="companion" aria-label="Road Assist telemetry"></canvas>
+        <!-- Region Entry Notification (Cinematic Upper Left) -->
+        <div class="region-entry-banner hidden" id="region-entry-banner">
+          <span class="region-entry-sub">ENTERING DISTRICT</span>
+          <h2 class="region-entry-title" id="region-entry-title">CRESCENT BAY</h2>
+        </div>
+
+        <!-- Road Assist Notification (Originating from Right Edge of Viewport) -->
+        <div class="hud-road-assist hidden" id="assist-card" aria-label="Road Assist warning">
+          <div class="assist-accent-bar"></div>
           <div class="assist-body">
-            <span class="eyebrow">ROAD ASSIST <i></i></span>
-            <p id="suit-message">Clear highway ahead.</p>
+            <div class="assist-eyebrow">
+              <svg class="assist-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 2.2l5.8 10.3H2.2L8 2.2zM8 5.8v3.2M8 11.2v.3"/>
+              </svg>
+              <span>ROAD ASSIST</span>
+            </div>
+            <p class="assist-msg" id="suit-message">SLIPPERY ROAD · BRAKE EARLY</p>
           </div>
         </div>
 
@@ -354,6 +524,7 @@ export class UI {
             <h2 class="pause-title">PAUSED</h2>
             <p class="pause-hint">Click anywhere to continue · ESC to resume</p>
             <div class="pause-actions">
+              <button class="pause-link pause-link-primary" id="pause-resume-btn">${icon('play')} Resume Drive</button>
               <button class="pause-link" id="pause-open-settings">${icon('settings')} Settings</button>
               <button class="pause-link" id="pause-open-weather">${icon('weather')} Atmosphere</button>
               <button class="pause-link" id="pause-restart">${icon('reset')} Restart Drive</button>
@@ -367,14 +538,15 @@ export class UI {
       <div id="fps" class="fps hidden"></div>
     `;
 
-    this.companionCanvas = document.getElementById('companion') as HTMLCanvasElement;
     const ids = [
       'weather-text', 'weather-time', 'speed-kmh-num', 'speed-gear-num', 'gauge-gear-block',
       'tacho-needle-group', 'gauge-active-arc', 'cluster-fuel-fill', 'cluster-fuel-val', 'cluster-trip-val',
-      'hud-cluster-panel', 'hud-driver-zone', 'nav-strip', 'camera-name', 'camera-mode-badge', 'camera-mode-text',
+      'hud-cluster-panel', 'hud-driver-zone', 'hud-minimap', 'minimap-region-name', 'minimap-road-path', 'minimap-road-bg',
+      'minimap-secondary-roads', 'minimap-road-labels', 'minimap-poi-group', 'minimap-player-marker',
+      'hud-maneuver-badge', 'maneuver-hud-content', 'maneuver-icon', 'maneuver-action', 'maneuver-dist', 'maneuver-location',
+      'camera-name', 'camera-mode-badge', 'camera-mode-text', 'region-entry-banner', 'region-entry-title',
       'suit-message', 'assist-card', 'refuel-prompt', 'refuel-text', 'fuel-warning', 'fps', 'sense',
-      'toast', 'drive-help', 'nav-road-path', 'nav-road-bg', 'nav-region-name', 'nav-landmark', 'nav-distance-marker', 'nav-marker-group',
-      'overlay-layer', 'overlay-viewport', 'nav-active-bar', 'top-nav', 'pause-screen', 'pause-trip'
+      'toast', 'drive-help', 'overlay-layer', 'overlay-viewport', 'nav-active-bar', 'top-nav', 'pause-screen', 'pause-trip', 'pause-resume-btn'
     ];
     ids.forEach(id => {
       const el = document.getElementById(id);
@@ -412,6 +584,7 @@ export class UI {
       actions.resume();
     });
 
+    click('pause-resume-btn', (e) => { e.stopPropagation(); actions.resume(); });
     click('pause-open-settings', (e) => { e.stopPropagation(); this.switchOverlay('settings'); });
     click('pause-open-weather', (e) => { e.stopPropagation(); this.switchOverlay('weather'); });
     click('pause-restart', (e) => { e.stopPropagation(); actions.restart(); });
@@ -432,7 +605,7 @@ export class UI {
 
   handleDriveClick(zen = false) {
     this.closeOverlay();
-    if (this.screen === 'paused') {
+    if (this.screen === 'paused' || this.screen === 'playing') {
       this.actions.resume();
     } else {
       this.actions.start(zen);
@@ -493,7 +666,14 @@ export class UI {
     this.previousOverlay = this.activeOverlay;
     this.activeOverlay = type;
     const layer = this.elements['overlay-layer'];
-    if (layer) layer.classList.remove('hidden');
+    if (layer) {
+      layer.classList.remove('hidden');
+      if (type === 'garage') {
+        layer.classList.add('garage-overlay-layer');
+      } else {
+        layer.classList.remove('garage-overlay-layer');
+      }
+    }
 
     // Make top nav visible so user can navigate between tabs
     document.getElementById('top-nav')?.classList.remove('hidden');
@@ -505,6 +685,7 @@ export class UI {
 
     this.updateActiveNavIndicator(type);
     this.actions.modal(true);
+    this.actions.onOverlayChanged?.(type);
     this.renderActiveOverlay();
   }
 
@@ -512,9 +693,13 @@ export class UI {
     this.activeOverlay = null;
     this.previousOverlay = null;
     const layer = this.elements['overlay-layer'];
-    if (layer) layer.classList.add('hidden');
+    if (layer) {
+      layer.classList.add('hidden');
+      layer.classList.remove('garage-overlay-layer');
+    }
     this.updateActiveNavIndicator(null);
     this.actions.modal(false);
+    this.actions.onOverlayChanged?.(null);
 
     if (this.screen === 'paused') {
       document.getElementById('pause-screen')?.classList.remove('hidden');
@@ -524,7 +709,115 @@ export class UI {
     }
   }
 
+
+  public isGarageTransitioning = false;
+
+  renderGarageView(): string {
+    const vehicles = this.actions.getAvailableVehicles ? this.actions.getAvailableVehicles() : getAllVehicles();
+    const currentId = this.settings.data.selectedVehicle || 'r34';
+    const activeCar = vehicles.find(v => v.id === currentId) || vehicles[0];
+    const specs = activeCar.displaySpecs;
+
+    const currentIndex = vehicles.findIndex(v => v.id === currentId);
+    const prevVehicle = vehicles[(currentIndex - 1 + vehicles.length) % vehicles.length];
+    const nextVehicle = vehicles[(currentIndex + 1) % vehicles.length];
+    const disabledAttr = this.isGarageTransitioning ? 'disabled' : '';
+
+    return `
+      <div class="showcase-view ${this.isGarageTransitioning ? 'is-transitioning' : ''}">
+        <!-- TOP-LEFT: Direct Automotive Typography Over Scene -->
+        <div class="showcase-header">
+          <div class="showcase-brand">AFTERMILE</div>
+          <h1 class="showcase-title">${activeCar.name}</h1>
+          <div class="showcase-category">${specs.category}</div>
+          <div class="showcase-specs-line">
+            <span>${specs.power.toUpperCase()}</span>
+            <span class="showcase-bullet">•</span>
+            <span>${specs.drivetrain.toUpperCase()}</span>
+            <span class="showcase-bullet">•</span>
+            <span>${specs.transmission.toUpperCase()}</span>
+          </div>
+        </div>
+
+        <!-- BOTTOM CONTROLS: Minimal Typography Selector & Drive Action -->
+        <div class="showcase-footer">
+          <div class="showcase-selector-bar">
+            <button class="showcase-arrow" id="garage-prev-btn" ${disabledAttr} title="Previous: ${prevVehicle.name}">
+              &lsaquo;
+            </button>
+            <div class="showcase-tabs">
+              ${vehicles.map(v => `
+                <button class="showcase-tab ${v.id === currentId ? 'active' : ''}" data-car-id="${v.id}" ${disabledAttr}>
+                  ${v.name}
+                </button>
+              `).join('')}
+            </div>
+            <button class="showcase-arrow" id="garage-next-btn" ${disabledAttr} title="Next: ${nextVehicle.name}">
+              &rsaquo;
+            </button>
+          </div>
+
+          <div class="showcase-actions">
+            <button class="showcase-drive-link" id="garage-drive-btn" ${disabledAttr}>
+              SELECT &amp; DRIVE &rarr;
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  bindGarageEvents() {
+    const vehicles = this.actions.getAvailableVehicles ? this.actions.getAvailableVehicles() : getAllVehicles();
+    const currentId = this.settings.data.selectedVehicle || 'r34';
+    const currentIndex = vehicles.findIndex(v => v.id === currentId);
+
+    // Car selector text buttons
+    document.querySelectorAll('.showcase-tab').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (this.isGarageTransitioning) return;
+        const carId = (btn as HTMLElement).dataset.carId;
+        if (carId && carId !== currentId) {
+          if (this.actions.selectVehicle) {
+            await this.actions.selectVehicle(carId);
+          }
+        }
+      });
+    });
+
+    // Prev / Next arrows
+    document.getElementById('garage-prev-btn')?.addEventListener('click', async () => {
+      if (this.isGarageTransitioning) return;
+      const prevId = vehicles[(currentIndex - 1 + vehicles.length) % vehicles.length].id;
+      if (this.actions.selectVehicle) {
+        await this.actions.selectVehicle(prevId);
+      }
+    });
+
+    document.getElementById('garage-next-btn')?.addEventListener('click', async () => {
+      if (this.isGarageTransitioning) return;
+      const nextId = vehicles[(currentIndex + 1) % vehicles.length].id;
+      if (this.actions.selectVehicle) {
+        await this.actions.selectVehicle(nextId);
+      }
+    });
+
+    // Drive button
+    document.getElementById('garage-drive-btn')?.addEventListener('click', () => {
+      if (this.isGarageTransitioning) return;
+      this.closeOverlay();
+      this.actions.start(false);
+    });
+  }
+
+  updateGarageView() {
+    if (this.activeOverlay === 'garage') {
+      this.renderActiveOverlay();
+    }
+  }
+
   renderSettings() {
+
     this.renderActiveOverlay();
   }
 
@@ -640,48 +933,10 @@ export class UI {
       `;
       this.bindWeatherEvents();
     } else if (type === 'garage') {
-      viewport.innerHTML = `
-        <div class="floating-view garage-view">
-          <div class="floating-header">
-            <span class="floating-eyebrow">HERO SPECIFICATION</span>
-            <h1 class="floating-title">NISSAN SKYLINE GT-R</h1>
-            <p class="floating-subtitle">1999 BNR34 V-Spec · Bayside Blue (TV2)</p>
-          </div>
-
-          <div class="garage-specs-row">
-            <div class="spec-stat-item">
-              <span class="stat-tag">ENGINE</span>
-              <strong class="stat-value">RB26DETT</strong>
-              <span class="stat-sub">2.6L Twin-Turbo I6</span>
-            </div>
-            <div class="spec-stat-item">
-              <span class="stat-tag">POWER</span>
-              <strong class="stat-value">280 PS</strong>
-              <span class="stat-sub">392 Nm @ 4,400 RPM</span>
-            </div>
-            <div class="spec-stat-item">
-              <span class="stat-tag">DRIVETRAIN</span>
-              <strong class="stat-value">ATTESA E-TS</strong>
-              <span class="stat-sub">All-Wheel Drive</span>
-            </div>
-            <div class="spec-stat-item">
-              <span class="stat-tag">TRANSMISSION</span>
-              <strong class="stat-value">6-SPEED</strong>
-              <span class="stat-sub">Getrag Manual</span>
-            </div>
-            <div class="spec-stat-item">
-              <span class="stat-tag">REDLINE</span>
-              <strong class="stat-value">7,800 RPM</strong>
-              <span class="stat-sub">Multi-Layer Audio</span>
-            </div>
-          </div>
-
-          <div class="garage-footer-hint">
-            <span>LIVE 3D MODEL ACTIVE · CAMERAS CALIBRATED FOR CHASE, HOOD & COCKPIT</span>
-          </div>
-        </div>
-      `;
+      viewport.innerHTML = this.renderGarageView();
+      this.bindGarageEvents();
     } else if (type === 'settings') {
+
       viewport.innerHTML = `
         <div class="floating-view settings-view">
           <div class="floating-header">
@@ -771,6 +1026,13 @@ export class UI {
         </div>
       `;
     } else if (tab === 'audio') {
+      const voices = this.actions.getVoices ? this.actions.getVoices() : [];
+      const voiceOptions = voices.map(v => `
+        <option value="${v.id}" ${data.navVoiceId === v.id ? 'selected' : ''}>
+          ${v.name} (${v.lang})${v.isFemale ? ' · Female' : ''}
+        </option>
+      `).join('');
+
       return `
         <div class="setting-row">
           <div class="setting-meta"><span class="setting-name">Master Volume</span><small>Overall audio level</small></div>
@@ -779,6 +1041,30 @@ export class UI {
             <span class="slider-val">${Math.round(data.master * 100)}%</span>
           </div>
         </div>
+        <div class="setting-row">
+          <div class="setting-meta"><span class="setting-name">Navigation Voice</span><small>Spoken turn & landmark directions (Web Speech API)</small></div>
+          <div class="setting-control">
+            <button class="toggle-pill ${data.navVoice ? 'active' : ''}" data-toggle="navVoice">${data.navVoice ? 'Active' : 'Muted'}</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-meta"><span class="setting-name">Navigation Voice Volume</span><small>Speech guidance loudness</small></div>
+          <div class="setting-control slider-control">
+            <input type="range" min="0" max="1" step="0.05" value="${data.navVoiceVolume}" data-slider="navVoiceVolume">
+            <span class="slider-val">${Math.round(data.navVoiceVolume * 100)}%</span>
+          </div>
+        </div>
+        ${voices.length > 0 ? `
+        <div class="setting-row">
+          <div class="setting-meta"><span class="setting-name">Voice Profile</span><small>System & browser English speech profile</small></div>
+          <div class="setting-control">
+            <select class="setting-select" data-select="navVoiceId">
+              <option value="" ${data.navVoiceId === '' ? 'selected' : ''}>Default (Auto Natural Female)</option>
+              ${voiceOptions}
+            </select>
+          </div>
+        </div>
+        ` : ''}
         <div class="setting-row">
           <div class="setting-meta"><span class="setting-name">Engine & Drivetrain</span><small>RB26 multi-layer throttle audio</small></div>
           <div class="setting-control slider-control">
@@ -924,7 +1210,16 @@ export class UI {
           const next = !current;
           this.actions.setting(key, next);
           btn.classList.toggle('active', next);
-          btn.textContent = next ? 'Active' : 'Off';
+          btn.textContent = next ? 'Active' : (key === 'navVoice' ? 'Muted' : 'Off');
+        }
+      });
+    });
+
+    viewport.querySelectorAll<HTMLSelectElement>('[data-select]').forEach(select => {
+      select.addEventListener('change', () => {
+        const key = select.dataset.select as keyof SettingsData;
+        if (key) {
+          this.actions.setting(key, select.value);
         }
       });
     });
@@ -940,13 +1235,27 @@ export class UI {
     });
   }
 
+  private regionBannerTimer = 0;
+
   showCameraBadge(name: string) {
     const badge = this.elements['camera-mode-badge'];
     const text = this.elements['camera-mode-text'];
     if (badge && text) {
-      text.textContent = name.toUpperCase();
+      text.textContent = `CAMERA · ${name.toUpperCase()}`;
       badge.classList.remove('hidden');
       this.cameraToastTimer = 0.9;
+    }
+  }
+
+  showRegionBanner(regionName: string, subName = 'PACIFIC COAST EXPRESSWAY') {
+    const banner = this.elements['region-entry-banner'];
+    const title = this.elements['region-entry-title'];
+    if (banner && title) {
+      title.textContent = regionName.toUpperCase();
+      const sub = banner.querySelector('.region-entry-sub');
+      if (sub) sub.textContent = subName.toUpperCase();
+      banner.classList.remove('hidden');
+      this.regionBannerTimer = 3.5;
     }
   }
 
@@ -964,11 +1273,52 @@ export class UI {
 
     // In Cockpit / FPP camera mode (camera index 3), hide external HUD to make the car interior the dashboard!
     const isCockpit = state.camera === 3;
+    if (e['hud-minimap']) e['hud-minimap'].classList.toggle('hidden', isCockpit);
     if (e['hud-driver-zone']) e['hud-driver-zone'].classList.toggle('hidden', isCockpit);
     if (e['hud-cluster-panel']) e['hud-cluster-panel'].classList.toggle('hidden', isCockpit);
-    if (e['nav-strip']) e['nav-strip'].classList.toggle('hidden', isCockpit);
     if (e['drive-help']) e['drive-help'].classList.toggle('hidden', isCockpit);
     if (e['assist-card']) e['assist-card'].classList.toggle('hidden', isCockpit);
+
+    // Top-Center Maneuver HUD (Dedicated exclusively to navigation)
+    const maneuverBadge = e['hud-maneuver-badge'];
+    const maneuverContent = e['maneuver-hud-content'];
+    if (maneuverBadge) {
+      if (state.activeManeuver) {
+        maneuverBadge.classList.remove('hidden');
+        maneuverBadge.classList.toggle('restrained', Boolean(state.activeManeuver.isFar));
+
+        const targetIcon = state.activeManeuver.icon || 'straight';
+        const targetAction = state.activeManeuver.action || 'CONTINUE';
+        const targetLocation = (state.activeManeuver.location || state.roadName || state.region).toUpperCase();
+        const newManeuverKey = `${targetIcon}_${targetAction}_${targetLocation}`;
+
+        if (newManeuverKey !== this.lastManeuverKey && maneuverContent) {
+          this.lastManeuverKey = newManeuverKey;
+          maneuverContent.classList.add('maneuver-transition-out');
+          maneuverContent.classList.remove('maneuver-transition-in');
+          if (this.maneuverSwapTimeout) clearTimeout(this.maneuverSwapTimeout);
+          this.maneuverSwapTimeout = window.setTimeout(() => {
+            if (e['maneuver-icon']) e['maneuver-icon'].innerHTML = getNavSvg(targetIcon);
+            if (e['maneuver-action']) e['maneuver-action'].textContent = targetAction;
+            if (e['maneuver-location']) e['maneuver-location'].textContent = targetLocation;
+            maneuverContent.classList.remove('maneuver-transition-out');
+            maneuverContent.classList.add('maneuver-transition-in');
+          }, 120);
+        } else if (!maneuverContent?.classList.contains('maneuver-transition-out')) {
+          if (e['maneuver-icon'] && !e['maneuver-icon'].innerHTML) e['maneuver-icon'].innerHTML = getNavSvg(targetIcon);
+          if (e['maneuver-action']) e['maneuver-action'].textContent = targetAction;
+          if (e['maneuver-location']) e['maneuver-location'].textContent = targetLocation;
+        }
+
+        if (e['maneuver-dist']) {
+          const distM = state.activeManeuver.distance;
+          const distFormatted = distM >= 1000 ? `${(distM / 1000).toFixed(1)} ${unit}` : `${Math.round(distM)} m`;
+          e['maneuver-dist'].textContent = distFormatted;
+        }
+      } else {
+        maneuverBadge.classList.add('hidden');
+      }
+    }
 
     // 1. Damped Smooth Tachometer Needle & Sweep Arc
     const targetRpm = Math.max(0, state.rpm);
@@ -1014,52 +1364,99 @@ export class UI {
     if (e['cluster-fuel-val']) e['cluster-fuel-val'].textContent = `${Math.round(state.fuel)}%`;
     if (e['cluster-trip-val']) e['cluster-trip-val'].textContent = `${(state.distance / distFactor).toFixed(1)} ${unit.toUpperCase()}`;
 
-    // Note: Speedometer & tachometer cluster ALWAYS remains 100% visible (no fading/dimming)
-
     // 5. Topbar Weather & Atmosphere Header
     if (e['weather-text']) e['weather-text'].textContent = `${weatherNames[state.condition]} · ${Math.round(state.temperature)}°`;
     const hour = Math.floor(state.hour);
     const minutes = Math.floor((state.hour - hour) * 60);
     if (e['weather-time']) e['weather-time'].textContent = `${String(hour).padStart(2, '0')}:${String(minutes).padStart(2, '0')} · ${state.city || 'SIMULATION'}`;
 
-    // 6. Route Preview Navigation Strip
-    if (e['nav-road-path'] && state.navCurve && state.navCurve.length >= 3) {
+    // 6. Top-Left Integrated Mini Route / Minimap Rendering
+    if (e['minimap-road-path'] && state.navCurve && state.navCurve.length >= 3) {
       const pts = state.navCurve;
-      let dStr = `M 100 50`;
-      let markerSvg = '';
-
+      // Heading-up transformation with player chevron at lower-center (90, 135)
+      // Range: 350m ahead mapped to 115px (scale approx 0.33), lateral scaled by 1.8
+      let dStr = `M 90 135`;
       for (let i = 0; i < pts.length; i++) {
         const pt = pts[i];
-        const svgX = Math.max(14, Math.min(186, 100 + pt.x * 2.4));
-        const svgY = 50 - (pt.y / 350) * 44;
+        const svgX = Math.max(12, Math.min(168, 90 + pt.x * 1.8));
+        const svgY = 135 - (pt.y / 350) * 115;
 
         if (i === 0) {
           dStr += ` L ${svgX.toFixed(1)} ${svgY.toFixed(1)}`;
         } else {
           const prev = pts[i - 1];
-          const prevX = Math.max(14, Math.min(186, 100 + prev.x * 2.4));
-          const prevY = 50 - (prev.y / 350) * 44;
+          const prevX = Math.max(12, Math.min(168, 90 + prev.x * 1.8));
+          const prevY = 135 - (prev.y / 350) * 115;
           const midX = (prevX + svgX) / 2;
           const midY = (prevY + svgY) / 2;
           dStr += ` Q ${prevX.toFixed(1)} ${prevY.toFixed(1)} ${midX.toFixed(1)} ${midY.toFixed(1)}`;
         }
-
-        if (pt.marker) {
-          markerSvg += `<circle cx="${svgX.toFixed(1)}" cy="${svgY.toFixed(1)}" r="3" fill="#dfb271" stroke="#ffffff" stroke-width="1"/>`;
-        }
       }
 
-      e['nav-road-path'].setAttribute('d', dStr);
-      if (e['nav-road-bg']) e['nav-road-bg'].setAttribute('d', dStr);
-      if (e['nav-marker-group']) e['nav-marker-group'].innerHTML = markerSvg;
+      e['minimap-road-path'].setAttribute('d', dStr);
+      if (e['minimap-road-bg']) e['minimap-road-bg'].setAttribute('d', dStr);
+      if (e['minimap-region-name']) e['minimap-region-name'].textContent = (state.roadName || state.region).toUpperCase();
 
-      if (e['nav-region-name']) e['nav-region-name'].textContent = state.region.toUpperCase();
-      if (e['nav-landmark']) {
-        e['nav-landmark'].textContent = state.navEvent || 'HIGHWAY AHEAD';
+      // Render Secondary Connected / Branching Roads
+      if (e['minimap-secondary-roads']) {
+        let secMarkup = '';
+        if (state.secondaryRoads && state.secondaryRoads.length > 0) {
+          for (const sec of state.secondaryRoads) {
+            if (sec.points.length >= 2) {
+              let dSec = '';
+              for (let j = 0; j < sec.points.length; j++) {
+                const sx = Math.max(10, Math.min(170, 90 + sec.points[j].x * 1.8));
+                const sy = 135 - (sec.points[j].y / 350) * 115;
+                if (j === 0) dSec += `M ${sx.toFixed(1)} ${sy.toFixed(1)}`;
+                else dSec += ` L ${sx.toFixed(1)} ${sy.toFixed(1)}`;
+              }
+              secMarkup += `<path d="${dSec}" stroke="rgba(145, 195, 215, 0.28)" stroke-width="1.8" stroke-linecap="round" fill="none"/>`;
+            }
+          }
+        }
+        e['minimap-secondary-roads'].innerHTML = secMarkup;
+      }
+
+      // Render Road Names & Street Labels on Minimap
+      if (e['minimap-road-labels']) {
+        let lblMarkup = '';
+        if (state.roadLabels && state.roadLabels.length > 0) {
+          for (const lbl of state.roadLabels) {
+            const lx = Math.max(20, Math.min(160, 90 + lbl.x * 1.8));
+            const ly = 135 - (lbl.y / 350) * 115;
+            if (ly > 25 && ly < 155) {
+              const rot = lbl.angle ? `transform="rotate(${lbl.angle.toFixed(0)}, ${lx.toFixed(1)}, ${ly.toFixed(1)})"` : '';
+              lblMarkup += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="6.8" font-weight="700" letter-spacing="0.14em" fill="rgba(215, 238, 248, 0.65)" text-anchor="middle" font-family="'Avenir Next', sans-serif" ${rot}>${lbl.text}</text>`;
+            }
+          }
+        }
+        e['minimap-road-labels'].innerHTML = lblMarkup;
+      }
+
+      // Real World POI Icons on Minimap (Original Vector Glyphs, NO EMOJI)
+      if (e['minimap-poi-group']) {
+        let poiMarkup = '';
+        if (state.nearbyPois && state.nearbyPois.length > 0) {
+          for (const poi of state.nearbyPois) {
+            const px = Math.max(16, Math.min(164, 90 + poi.x * 1.8));
+            const py = 135 - (poi.y / 350) * 115;
+            if (py > 15 && py < 165) {
+              if (poi.type === 'fuel') {
+                poiMarkup += `
+                  <g transform="translate(${px.toFixed(1)}, ${py.toFixed(1)})">
+                    <circle cx="0" cy="0" r="6" fill="rgba(4, 9, 16, 0.85)" stroke="#00f0ff" stroke-width="0.9" stroke-opacity="0.75"/>
+                    <path d="M-2 -3h3a1 1 0 0 1 1 1v5h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1zm0 2h3m1 1h1v2" fill="none" stroke="#e0f8ff" stroke-width="0.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </g>
+                `;
+              }
+            }
+          }
+        }
+        e['minimap-poi-group'].innerHTML = poiMarkup;
       }
     }
 
-    // 7. Road Assist Alerts
+    // 7. Road Assist Alerts (Originates from Right Viewport Edge)
     let message = '';
     let isUrgent = false;
 
@@ -1073,30 +1470,31 @@ export class UI {
       message = `LOW FUEL · HORIZON STATION ${Math.max(0, state.nextStation / distFactor).toFixed(1)} ${unit}`;
       isUrgent = true;
     } else if (state.condition === 'storm' || state.condition === 'heavy') {
-      message = 'SLIPPERY ROAD · EXTEND BRAKING DISTANCE';
+      message = 'SLIPPERY ROAD · BRAKE EARLY';
       isUrgent = true;
     } else if (state.condition === 'snow') {
-      message = 'ICY SURFACE · EASY ON STEERING INPUTS';
+      message = 'ICY SURFACE · EASY ON STEERING';
       isUrgent = true;
     } else if (state.nextStation < 280 && state.nextStation > 40) {
       message = 'HORIZON FUEL & REST · APPROACHING ON RIGHT';
-      isUrgent = true;
+      isUrgent = false;
     }
 
     const assistCard = e['assist-card'];
     if (assistCard) {
-      assistCard.classList.toggle('quiet', !d.assistant);
-      if (message) {
+      if (d.assistant && message) {
         if (message !== this.lastAssistMessage) {
           this.lastAssistMessage = message;
-          this.assistMessageTimer = isUrgent ? 8.0 : 4.5;
+          this.assistMessageTimer = isUrgent ? 7.0 : 4.5;
         }
         if (e['suit-message']) e['suit-message'].textContent = message;
+        assistCard.classList.remove('hidden');
         assistCard.classList.remove('faded');
       } else {
         this.assistMessageTimer -= dt;
         if (this.assistMessageTimer <= 0) {
           assistCard.classList.add('faded');
+          assistCard.classList.add('hidden');
         }
       }
     }
@@ -1106,6 +1504,11 @@ export class UI {
     this.cameraToastTimer -= dt;
     if (this.cameraToastTimer <= 0 && e['camera-mode-badge']) {
       e['camera-mode-badge'].classList.add('hidden');
+    }
+
+    this.regionBannerTimer -= dt;
+    if (this.regionBannerTimer <= 0 && e['region-entry-banner']) {
+      e['region-entry-banner'].classList.add('hidden');
     }
 
     if (e.fps) {

@@ -41,6 +41,26 @@ export interface SteeringConfig {
   powerExponent: number;
 }
 
+export interface VehicleDisplaySpecs {
+  category: string;
+  engineName: string;
+  power: string;
+  displacement: string;
+  dimensions: string;
+  wheelbase: string;
+  wheels: string;
+  drivetrain: string;
+  transmission: string;
+  highlights: string[];
+  gameplayCharacteristics: {
+    archetype: string;
+    handling: string;
+    braking: string;
+    aero: string;
+    suspension: string;
+  };
+}
+
 /** Metres, kilograms, seconds, newtons and radians unless a field names its unit.
  * Model contract: Body; WheelMount0..3 containing Wheel0..3 and Caliper0..3.
  * Vehicle origin is the axle midpoint at road height; model forward is -Z.
@@ -68,8 +88,10 @@ export interface VehicleConfig {
   };
   fuel: FuelConfig;
   audio: VehicleAudioProfile;
+  displaySpecs: VehicleDisplaySpecs;
 }
 
 export function createVehicleConfig(base: VehicleConfig = R34Config): VehicleConfig {
   return structuredClone(base);
 }
+

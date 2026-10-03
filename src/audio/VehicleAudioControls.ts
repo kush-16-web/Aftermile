@@ -37,12 +37,20 @@ export class VehicleAudioControls {
     this.engineGain = vol*finiteClamp(this.profile.gain, 0, 1)*.7*(.38+.62*this.load)*(state.refueling ? 0 : 1);
     this.roadGain = env*.14*Math.pow(finiteClamp(speed/45, 0, 1), .85);
     this.windGain = env*.11*Math.pow(finiteClamp((speed-12)/48, 0, 1), 1.6);
-    // Braking alone never fabricates a squeal. Slip is the normalized tire signal.
-    const scrub = finiteClamp((state.slip - .12) / .88, 0, 1);
-    this.skidGain = vol * .14 * finiteClamp(speed / 4, 0, 1) * Math.pow(scrub, 1.2);
-    this.roadCutoff = 650 + Math.min(1300, speed*28);
-    this.windCutoff = 900 + Math.min(2600, speed*40);
-    this.skidFrequency = 1400 + scrub * 900;
+    // Brake sound: mechanical bite texture on moderate/hard braking, proportional to brake force & speed
+    const brakePressure = finiteClamp(state.brake, 0, 1);
+    const brakeBite = Math.pow(brakePressure, 1.4) * finiteClamp(speed / 6, 0, 1);
+    
+    // Tire slip audio: driven strictly by actual physical slip, not button presses.
+    // Differentiates gentle scrub vs aggressive sustained slide
+    const scrub = finiteClamp((state.slip - 0.20) / 0.80, 0, 1);
+    const slipIntensity = Math.pow(scrub, 1.3);
+    
+    // Skid gain combines progressive tire scrub and aggressive lock slide
+    this.skidGain = vol * (0.16 * finiteClamp(speed / 3.5, 0, 1) * slipIntensity + 0.06 * brakeBite * Math.pow(scrub, 0.8));
+    this.roadCutoff = 650 + Math.min(1300, speed * 28);
+    this.windCutoff = 900 + Math.min(2600, speed * 40);
+    this.skidFrequency = 1200 + scrub * 1100 + finiteClamp(speed * 8, 0, 300);
 
     this.weights.fill(0);
     const n = this.anchors.length;

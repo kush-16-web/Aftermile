@@ -179,7 +179,7 @@ export class VehicleEffects {
     const isGasStation = Math.abs(physics.s - station) < 65 && physics.offset > 0;
     const isOffRoad = Math.abs(physics.offset) > 9.8 && !isGasStation;
 
-    // 1. Process 4-Wheel Surface Tracks
+    // 1. Process 4-Wheel Surface Tracks & Tire Contact Effects
     let quadWriteIndex = 0;
 
     for (let w = 0; w < 4; w++) {
@@ -189,35 +189,32 @@ export class VehicleEffects {
       if (pivot && model.ready && !isAirborne && isMoving) {
         const worldPos = new THREE.Vector3();
         pivot.getWorldPosition(worldPos);
-        worldPos.y += 0.025; // Surface elevation
+        worldPos.y = (physics.wheelHeights[w] || worldPos.y) + 0.025; // Exact tire contact patch
 
         let shouldTrack = false;
-        let trackR = 0.08, trackG = 0.08, trackB = 0.09; // Rubber black default
+        let trackR = 0.08, trackG = 0.08, trackB = 0.09;
         let alpha = 0;
 
-        // Surface tracks strictly require meaningful tire slip (drift, burnout, locked wheel), never ordinary rolling
-        if (physics.slip > 0.28 && isMoving) {
+        // 1. Surface Track Ribbons: strictly require meaningful physical slip
+        if (physics.slip > 0.26 && isMoving) {
           if (snow > 0.15) {
-            // SNOW: subtle snow displacement track during wheelspin / slide
             shouldTrack = true;
             trackR = 0.78; trackG = 0.82; trackB = 0.88;
             alpha = THREE.MathUtils.clamp((physics.slip - 0.25) * 0.8, 0.15, 0.60);
           } else if (isOffRoad) {
-            // DIRT / GRASS: pressed earth during wheelspin or slide
             shouldTrack = true;
             trackR = 0.28; trackG = 0.22; trackB = 0.16;
             alpha = THREE.MathUtils.clamp((physics.slip - 0.22) * 0.9, 0.20, 0.75);
-          } else if (wet < 0.6 && (isRear || physics.slip > 0.42)) {
-            // DRY ASPHALT RUBBER SKID MARKS: during real tire slip / burnout / drift
+          } else if (wet < 0.6 && (isRear || physics.slip > 0.38)) {
             shouldTrack = true;
-            trackR = 0.06; trackG = 0.06; trackB = 0.07;
-            alpha = THREE.MathUtils.clamp((physics.slip - 0.25) / 0.50, 0.20, 0.90) * (1.0 - wet * 0.5);
+            trackR = 0.05; trackG = 0.05; trackB = 0.06;
+            alpha = THREE.MathUtils.clamp((physics.slip - 0.26) / 0.45, 0.15, 0.88) * (1.0 - wet * 0.5);
           }
         }
 
         if (shouldTrack) {
           const dist = worldPos.distanceTo(this.lastTireWorld[w]);
-          if (dist > 0.26 || !this.lastContact[w]) {
+          if (dist > 0.24 || !this.lastContact[w]) {
             const heading = -physics.road.heading(physics.s) - physics.heading;
             const perpX = Math.cos(heading);
             const perpZ = -Math.sin(heading);
@@ -238,19 +235,36 @@ export class VehicleEffects {
 
             this.lastTireWorld[w].copy(worldPos);
             this.lastContact[w] = true;
-
-            // Spawn smoke on dry asphalt slip
-            if (!isOffRoad && snow < 0.1 && physics.slip > 0.28 && (isRear || physics.slip > 0.55) && Math.random() < 0.75 && wet < 0.3) {
-              this.spawnSmoke(worldPos, physics, false);
-            }
           }
         } else {
           this.lastContact[w] = false;
         }
 
-        // Dust disturbance on dirt/grass
-        if (isOffRoad && totalSpeed > 2.5 && (isSlipping || totalSpeed > 8.0) && Math.random() < 0.45) {
-          this.spawnSmoke(worldPos, physics, true);
+        // 2. Physical Tire Smoke & Spray Emission (driven by accumulated contact energy)
+        const smokeEnergy = physics.smokeEnergy[w] || 0;
+        const isBurnout = totalSpeed < 2.5 && (physics.dynamicState === 'BURNOUT' || (physics.slip > 0.40 && physics.throttle > 0.5));
+
+        if (!isAirborne && (smokeEnergy > 0.45 || isBurnout)) {
+          if (isOffRoad) {
+            if (Math.random() < Math.min(0.85, smokeEnergy * 0.5 + 0.25)) {
+              this.spawnSmoke(worldPos, physics, w, true, isBurnout);
+            }
+          } else if (snow > 0.15) {
+            if (Math.random() < Math.min(0.70, smokeEnergy * 0.4)) {
+              this.spawnMist(worldPos, physics, true);
+            }
+          } else if (wet > 0.25) {
+            // WET ROAD: fine tire mist/water spray instead of dry rubber smoke
+            if (Math.random() < Math.min(0.80, smokeEnergy * 0.6 + 0.2)) {
+              this.spawnMist(worldPos, physics, false);
+            }
+          } else {
+            // DRY ASPHALT: realistic progressive tire smoke from contact patch
+            const spawnChance = isBurnout ? 0.90 : Math.min(0.85, (smokeEnergy - 0.4) * 0.45 + 0.20);
+            if (Math.random() < spawnChance) {
+              this.spawnSmoke(worldPos, physics, w, false, isBurnout);
+            }
+          }
         }
       } else {
         this.lastContact[w] = false;
@@ -381,29 +395,61 @@ export class VehicleEffects {
     this.smokeMesh.instanceMatrix.needsUpdate = true;
   }
 
-  private spawnSmoke(pos: THREE.Vector3, physics: VehiclePhysics, isDust = false) {
+  private spawnMist(pos: THREE.Vector3, physics: VehiclePhysics, isSnow = false) {
+    for (let i = 0; i < MAX_SMOKE_PARTICLES; i++) {
+      const p = this.smokeParticles[i];
+      if (!p.active) {
+        p.active = true;
+        p.isDust = false;
+        p.x = pos.x + (Math.random() * 2 - 1) * 0.14;
+        p.y = pos.y + 0.04;
+        p.z = pos.z + (Math.random() * 2 - 1) * 0.14;
+
+        // Mist/spray streams backward from road contact
+        p.vx = -physics.lateralVelocity * 0.40 + (Math.random() * 2 - 1) * 0.35;
+        p.vy = (isSnow ? 0.35 : 0.20) + Math.random() * 0.35;
+        p.vz = -physics.speed * 0.25 + (Math.random() * 2 - 1) * 0.35;
+        p.rot = Math.random() * Math.PI * 2;
+        p.rotSpeed = (Math.random() * 2 - 1) * 2.5;
+
+        p.size = 0.22 + Math.random() * 0.15;
+        p.maxSize = (isSnow ? 1.4 : 1.1) + Math.random() * 0.4;
+        p.maxAlpha = isSnow ? 0.22 : 0.12 + THREE.MathUtils.clamp(physics.slip * 0.12, 0, 0.12);
+        p.life = 0;
+        p.maxLife = 0.40 + Math.random() * 0.30;
+        break;
+      }
+    }
+  }
+
+  private spawnSmoke(pos: THREE.Vector3, physics: VehiclePhysics, wheelIndex: number, isDust = false, isBurnout = false) {
+    const energy = physics.smokeEnergy[wheelIndex] || 0;
+    const energyFactor = THREE.MathUtils.clamp(energy / 2.5, 0.2, 1.0);
+
     for (let i = 0; i < MAX_SMOKE_PARTICLES; i++) {
       const p = this.smokeParticles[i];
       if (!p.active) {
         p.active = true;
         p.isDust = isDust;
-        p.x = pos.x + (Math.random() * 2 - 1) * 0.2;
-        p.y = pos.y + 0.1;
-        p.z = pos.z + (Math.random() * 2 - 1) * 0.2;
+        p.x = pos.x + (Math.random() * 2 - 1) * (isBurnout ? 0.25 : 0.14);
+        p.y = pos.y + 0.04;
+        p.z = pos.z + (Math.random() * 2 - 1) * (isBurnout ? 0.25 : 0.14);
         
-        p.vx = -physics.lateralVelocity * 0.35 + (Math.random() * 2 - 1) * (isDust ? 0.9 : 0.6);
-        p.vy = (isDust ? 0.5 : 0.35) + Math.random() * 0.6;
-        p.vz = (Math.random() * 2 - 1) * 0.6;
+        const driftX = -physics.lateralVelocity * 0.30 + (Math.random() * 2 - 1) * (isDust ? 0.8 : 0.4);
+        const driftZ = (isBurnout ? 0 : -physics.speed * 0.30) + (Math.random() * 2 - 1) * 0.4;
+        p.vx = driftX;
+        p.vy = (isDust ? 0.40 : isBurnout ? 0.65 : 0.30) + Math.random() * 0.4;
+        p.vz = driftZ;
         p.rot = Math.random() * Math.PI * 2;
-        p.rotSpeed = (Math.random() * 2 - 1) * 1.5;
+        p.rotSpeed = (Math.random() * 2 - 1) * 1.6;
         
-        p.size = (isDust ? 0.45 : 0.35) + Math.random() * 0.25;
-        p.maxSize = (isDust ? 2.4 : 1.6) + Math.random() * 1.0;
+        p.size = (isDust ? 0.35 : 0.25) + Math.random() * 0.15;
+        p.maxSize = (isDust ? 2.0 : isBurnout ? 2.5 : 1.7) + Math.random() * 0.6;
         p.maxAlpha = isDust
-          ? 0.35 + THREE.MathUtils.clamp(physics.slip * 0.3, 0, 0.3)
-          : 0.22 + THREE.MathUtils.clamp(physics.slip * 0.25, 0, 0.25);
+          ? 0.25 + energyFactor * 0.20
+          : (0.08 + energyFactor * 0.16) * (isBurnout ? 1.25 : 1.0);
         p.life = 0;
-        p.maxLife = (isDust ? 0.75 : 0.9) + Math.random() * 0.6;
+        p.maxLife = (isDust ? 0.70 : isBurnout ? 1.3 : 0.85) + Math.random() * 0.4;
         break;
       }
     }

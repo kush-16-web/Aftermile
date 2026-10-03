@@ -3,6 +3,7 @@ import { VehicleAudio } from './VehicleAudio.ts';
 import type { VehicleAudioState } from './VehicleAudio.ts';
 import { R34Config } from '../vehicle/VehicleConfig.ts';
 import type { VehicleConfig } from '../vehicle/VehicleConfig.ts';
+import { buffer } from 'three/tsl';
 
 export class AudioManager {
   context: AudioContext | null = null;
@@ -42,7 +43,9 @@ export class AudioManager {
       this.vehicle = new VehicleAudio(ctx, this.master, this.vehicleConfig);
       this.wind = this.vehicle.wind;
 
-      // Noise source for rain
+
+
+    // Noise source for rain
       const buffer = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate);
       const data = buffer.getChannelData(0);
       let brown = 0;
@@ -111,6 +114,18 @@ export class AudioManager {
       this.context = null;
     }
   }
+
+  setVehicle(config: VehicleConfig) {
+    this.vehicleConfig = config;
+    if (this.context && this.master) {
+      if (this.vehicle) {
+        this.vehicle.dispose();
+      }
+      this.vehicle = new VehicleAudio(this.context, this.master, this.vehicleConfig);
+      this.wind = this.vehicle.wind;
+    }
+  }
+
 
   update(
     state: VehicleAudioState,

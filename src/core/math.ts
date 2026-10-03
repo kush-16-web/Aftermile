@@ -15,3 +15,5 @@ export function noise(x: number, seed = 16) {
 export function rng(seed: number) {
   let i = 0; return () => hash(++i, seed);
 }
+export const angleDiff = (a: number, b: number) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+export const angleLerp = (a: number, b: number, t: number) => a + angleDiff(a, b) * t;
