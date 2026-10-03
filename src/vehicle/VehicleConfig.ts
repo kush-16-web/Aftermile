@@ -7,10 +7,36 @@ export interface EngineAudioBand {
   /** Seamless recordings at this RPM. Omitted URLs never trigger a request. */
   onLoad?: string; offLoad?: string;
 }
+export interface TurboAudioConfig {
+  enabled: boolean;
+  spoolRate: number;
+  blowOffThreshold: number;
+  maxWhineGain: number;
+}
+export interface TransmissionAudioConfig {
+  enabled: boolean;
+  pitchMultiplier: number;
+  gearWhineGain: number;
+}
+export interface ExhaustAudioConfig {
+  overrunBurble: boolean;
+  shiftPop: boolean;
+}
+
 export interface VehicleAudioProfile {
-  name: string; status: 'needs-recordings' | 'recorded';
-  bands: EngineAudioBand[]; gain: number; minPitch: number; maxPitch: number;
-  rpmResponse: number; loadResponse: number; releaseSample?: string;
+  name: string;
+  vehicleType?: 'r34' | 'bmw_m4_gt3' | 'standard';
+  status: 'needs-recordings' | 'recorded';
+  bands: EngineAudioBand[];
+  gain: number;
+  minPitch: number;
+  maxPitch: number;
+  rpmResponse: number;
+  loadResponse: number;
+  releaseSample?: string;
+  turbo?: TurboAudioConfig;
+  transmission?: TransmissionAudioConfig;
+  exhaust?: ExhaustAudioConfig;
 }
 export interface FuelConfig {
   tankLitres: number; baselineLitresPer100Km: number; referenceSpeedKmh: number;

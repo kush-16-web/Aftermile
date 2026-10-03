@@ -4,6 +4,7 @@ import { VehicleAudioControls } from '../src/audio/VehicleAudioControls.ts';
 import type { VehicleAudioState } from '../src/audio/VehicleAudioControls.ts';
 import { VehicleAudio } from '../src/audio/VehicleAudio.ts';
 import { createVehicleConfig } from '../src/vehicle/VehicleConfig.ts';
+import { M4_GT3_EVO_Config } from '../src/vehicle/definitions/M4_GT3_EVO.ts';
 
 const frame = (load = 0, rpm = 3200): VehicleAudioState => ({speed:100/3.6,rpm,load,brake:0,slip:0,refueling:false});
 function settled(load: number, speed=100/3.6) {
@@ -109,3 +110,190 @@ test('recording fetch/decode failures remain isolated; shared assets decode once
     assert.equal(failed.recordingErrors.length,4);failed.dispose();
   } finally {globalThis.fetch=original;}
 });
+
+test('R34 vs BMW M4 GT3 distinct acoustic identity: turbo spool/blowoff vs straight-cut sequential gear whine', () => {
+  const r34Config = createVehicleConfig();
+  const bmwConfig = structuredClone(M4_GT3_EVO_Config);
+
+  const r34Controls = new VehicleAudioControls(r34Config.audio, r34Config.engine.idleRpm, r34Config.engine.redlineRpm);
+  const bmwControls = new VehicleAudioControls(bmwConfig.audio, bmwConfig.engine.idleRpm, bmwConfig.engine.redlineRpm);
+
+  // 1. High-load acceleration at 5500 RPM (in 3rd gear at 110 km/h)
+  const accelState: VehicleAudioState = {
+    speed: 110 / 3.6,
+    rpm: 5500,
+    load: 1.0,
+    throttle: 1.0,
+    brake: 0,
+    slip: 0,
+    gear: 3,
+    shiftTimer: 0,
+    isReversing: false,
+    refueling: false,
+  };
+
+  for (let i = 0; i < 60; i++) {
+    r34Controls.update(accelState, 1, 1, 1 / 60);
+    bmwControls.update(accelState, 1, 1, 1 / 60);
+  }
+
+  // R34 must have prominent turbo boost and turbo whine; BMW has prominent straight-cut gear whine
+  assert.ok(r34Controls.boost > 0.5, 'R34 builds boost under high load');
+  assert.ok(r34Controls.turboWhineGain > 0.05, 'R34 turbo spool whine is clearly audible');
+  assert.equal(r34Controls.gearWhineGain, 0, 'R34 road car does not have straight-cut racing gear whine');
+
+  assert.ok(bmwControls.gearWhineGain > 0.12, 'BMW GT3 sequential racing gearbox whine is prominently active');
+  assert.ok(bmwControls.gearWhineFrequency > 600, 'BMW gear mesh frequency tracks speed and ratio');
+
+  // 2. Throttle lift off: R34 compressor blow-off flutter
+  const liftState: VehicleAudioState = {
+    ...accelState,
+    load: 0,
+    throttle: 0,
+  };
+  r34Controls.update(liftState, 1, 1, 1 / 60);
+  assert.ok(r34Controls.blowOffGain > 0.05, 'R34 throttle lift releases compressor bypass blow-off flutter');
+
+  // 3. Gear shift event: BMW GT3 aggressive ignition cut & pop
+  const shiftState: VehicleAudioState = {
+    ...accelState,
+    gear: 4,
+    shiftTimer: 0.08,
+  };
+  bmwControls.update(shiftState, 1, 1, 1 / 60);
+  assert.ok(bmwControls.shiftCut < 0.6, 'BMW GT3 cuts engine power sharply during sequential shift');
+  assert.ok(bmwControls.shiftBang > 0.5, 'BMW GT3 produces sharp shift exhaust transient pop');
+});
+
+test('Physics-driven per-wheel tire audio: scrub on loaded cornering, squeal ONLY on substantial relative slip, zero squeal during rolling braking', () => {
+  const config = createVehicleConfig();
+  const controls = new VehicleAudioControls(config.audio, 850, 7800);
+
+  // Case A: Straight rolling cruising at 100 km/h (zero slip angle, zero slip velocity)
+  const rollingState: VehicleAudioState = {
+    speed: 100 / 3.6,
+    rpm: 3200,
+    load: 0.2,
+    brake: 0,
+    slip: 0,
+    refueling: false,
+    wheels: [
+      { slipVelocity: 0.05, slipAngle: 0.005, slipRatio: 0.01, normalLoad: 3800, surfaceType: 'asphalt' },
+      { slipVelocity: 0.05, slipAngle: 0.005, slipRatio: 0.01, normalLoad: 3800, surfaceType: 'asphalt' },
+      { slipVelocity: 0.02, slipAngle: 0.002, slipRatio: 0.005, normalLoad: 3800, surfaceType: 'asphalt' },
+      { slipVelocity: 0.02, slipAngle: 0.002, slipRatio: 0.005, normalLoad: 3800, surfaceType: 'asphalt' },
+    ],
+  };
+  controls.update(rollingState, 1, 1, 1 / 60);
+  assert.equal(controls.skidGain, 0, 'Normal straight rolling produces zero tire squeal');
+  assert.equal(controls.tireScrubGain, 0, 'Normal straight rolling produces zero tire scrub');
+
+  // Case B: Heavy normal straight braking from 100 km/h with rolling tires (ABS active, slipVelocity < 0.8 m/s)
+  const absBrakingState: VehicleAudioState = {
+    ...rollingState,
+    brake: 0.9,
+    wheels: [
+      { slipVelocity: 0.65, slipAngle: 0.005, slipRatio: 0.12, normalLoad: 4900, surfaceType: 'asphalt' },
+      { slipVelocity: 0.65, slipAngle: 0.005, slipRatio: 0.12, normalLoad: 4900, surfaceType: 'asphalt' },
+      { slipVelocity: 0.40, slipAngle: 0.002, slipRatio: 0.08, normalLoad: 2700, surfaceType: 'asphalt' },
+      { slipVelocity: 0.40, slipAngle: 0.002, slipRatio: 0.08, normalLoad: 2700, surfaceType: 'asphalt' },
+    ],
+  };
+  controls.update(absBrakingState, 1, 1, 1 / 60);
+  assert.equal(controls.skidGain, 0, 'Braking with rolling tires MUST NOT produce tire squeal');
+
+  // Case C: Loaded cornering below grip limit (slipAngle = 0.08 rad, slipVelocity = 0.5 m/s)
+  const corneringState: VehicleAudioState = {
+    ...rollingState,
+    wheels: [
+      { slipVelocity: 0.5, slipAngle: 0.08, slipRatio: 0.04, normalLoad: 5200, surfaceType: 'asphalt' },
+      { slipVelocity: 0.3, slipAngle: 0.06, slipRatio: 0.03, normalLoad: 2400, surfaceType: 'asphalt' },
+      { slipVelocity: 0.4, slipAngle: 0.07, slipRatio: 0.03, normalLoad: 4800, surfaceType: 'asphalt' },
+      { slipVelocity: 0.2, slipAngle: 0.05, slipRatio: 0.02, normalLoad: 2800, surfaceType: 'asphalt' },
+    ],
+  };
+  controls.update(corneringState, 1, 1, 1 / 60);
+  assert.ok(controls.tireScrubGain > 0.02, 'Loaded cornering produces audible tire scrub texture');
+  assert.equal(controls.skidGain, 0, 'Cornering below sliding threshold produces zero screaming squeal');
+
+  // Case D: Full controlled drift (rear wheels slipVelocity = 4.2 m/s, front slipAngle = 0.22 rad)
+  const driftState: VehicleAudioState = {
+    ...rollingState,
+    speed: 75 / 3.6,
+    wheels: [
+      { slipVelocity: 0.8, slipAngle: 0.22, slipRatio: 0.08, normalLoad: 4200, surfaceType: 'asphalt' },
+      { slipVelocity: 0.6, slipAngle: 0.20, slipRatio: 0.06, normalLoad: 3100, surfaceType: 'asphalt' },
+      { slipVelocity: 4.2, slipAngle: 0.35, slipRatio: 0.45, normalLoad: 3900, surfaceType: 'asphalt' },
+      { slipVelocity: 3.8, slipAngle: 0.32, slipRatio: 0.42, normalLoad: 3600, surfaceType: 'asphalt' },
+    ],
+  };
+  controls.update(driftState, 1, 1, 1 / 60);
+  assert.ok(controls.skidGain > 0.06, 'Drifting produces sustained sliding tire squeal');
+  assert.ok(controls.tireScrubGain > 0.03, 'Drifting produces tire scrub texture');
+});
+
+test('Per-wheel multi-surface audio blending: mixed surface (left gravel, right asphalt) blends both textures', () => {
+  const config = createVehicleConfig();
+  const controls = new VehicleAudioControls(config.audio, 850, 7800);
+
+  // Left 2 wheels on gravel, Right 2 wheels on asphalt
+  const mixedSurfaceState: VehicleAudioState = {
+    speed: 60 / 3.6,
+    rpm: 2800,
+    load: 0.3,
+    brake: 0,
+    slip: 0,
+    refueling: false,
+    wheels: [
+      { slipVelocity: 0.1, slipAngle: 0.01, slipRatio: 0.01, normalLoad: 3800, surfaceType: 'gravel' },
+      { slipVelocity: 0.1, slipAngle: 0.01, slipRatio: 0.01, normalLoad: 3800, surfaceType: 'asphalt' },
+      { slipVelocity: 0.1, slipAngle: 0.01, slipRatio: 0.01, normalLoad: 3800, surfaceType: 'gravel' },
+      { slipVelocity: 0.1, slipAngle: 0.01, slipRatio: 0.01, normalLoad: 3800, surfaceType: 'asphalt' },
+    ],
+  };
+
+  controls.update(mixedSurfaceState, 1, 1, 1 / 60);
+
+  // Both gravel and asphalt gains must be active in 50:50 proportion
+  assert.ok(controls.surfaceGravelGain > 0.04, 'Gravel channel is active for wheels on gravel');
+  assert.ok(controls.surfaceAsphaltGain > 0.02, 'Asphalt channel is active for wheels on asphalt');
+  assert.equal(controls.surfaceSnowGain, 0, 'Snow channel is zero');
+  assert.equal(controls.surfaceGrassGain, 0, 'Grass channel is zero');
+});
+
+test('Camera acoustic transfer function: Cockpit mode applies cabin lowpass filter and boosts interior transmission whine', () => {
+  const bmwConfig = structuredClone(M4_GT3_EVO_Config);
+  const controls = new VehicleAudioControls(bmwConfig.audio, bmwConfig.engine.idleRpm, bmwConfig.engine.redlineRpm);
+
+  const state: VehicleAudioState = {
+    speed: 90 / 3.6,
+    rpm: 5000,
+    load: 0.8,
+    brake: 0,
+    slip: 0,
+    gear: 3,
+    shiftTimer: 0,
+    isReversing: false,
+    refueling: false,
+    cameraMode: 0, // Chase mode
+  };
+
+  controls.update(state, 1, 1, 1 / 60);
+  const chaseCutoff = controls.cockpitFilterCutoff;
+  const chaseWhineGain = controls.gearWhineGain;
+
+  // Switch to Cockpit mode (mode 3)
+  const cockpitState: VehicleAudioState = {
+    ...state,
+    cameraMode: 3,
+  };
+  controls.update(cockpitState, 1, 1, 1 / 60);
+  const cockpitCutoff = controls.cockpitFilterCutoff;
+  const cockpitWhineGain = controls.gearWhineGain;
+
+  assert.ok(cockpitCutoff < chaseCutoff, 'Cockpit applies cabin acoustic lowpass filter');
+  assert.ok(cockpitCutoff <= 2400, 'Cockpit lowpass filter attenuates harsh external frequencies');
+  assert.ok(cockpitWhineGain > chaseWhineGain * 1.5, 'Cockpit significantly amplifies mechanical straight-cut transmission whine');
+  assert.ok(controls.cabinResonanceGain > 0, 'Cockpit activates internal chassis cabin resonance');
+});
+

@@ -138,6 +138,7 @@ export const M4_GT3_EVO_Config: VehicleConfig = {
   },
   audio: {
     name: 'BMW P58 3.0L Twin-Turbo Inline-6 GT3 profile',
+    vehicleType: 'bmw_m4_gt3',
     status: 'recorded',
     bands: [
       { rpm: 900,  onLoad: '/audio/bmw_m4_gt3/idle_on.wav',     offLoad: '/audio/bmw_m4_gt3/idle_off.wav' },
@@ -153,6 +154,21 @@ export const M4_GT3_EVO_Config: VehicleConfig = {
     maxPitch: 1.42,
     rpmResponse: 16,
     loadResponse: 11,
+    turbo: {
+      enabled: true,
+      spoolRate: 5.5,
+      blowOffThreshold: 0.65,
+      maxWhineGain: 0.06,
+    },
+    transmission: {
+      enabled: true,
+      pitchMultiplier: 28.0,
+      gearWhineGain: 0.24,
+    },
+    exhaust: {
+      overrunBurble: true,
+      shiftPop: true,
+    },
   },
   displaySpecs: {
     category: '2025 · GT3 RACE CAR',

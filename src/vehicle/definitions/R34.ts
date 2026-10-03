@@ -79,7 +79,9 @@ export const R34Config: VehicleConfig = {
     refuelLitresPerSecond: 4.5,
   },
   audio: {
-    name: 'RB26 inline-six recording profile', status: 'recorded',
+    name: 'RB26 inline-six recording profile',
+    vehicleType: 'r34',
+    status: 'recorded',
     bands: [
       { rpm: 850, onLoad: '/audio/r34/idle_on.wav', offLoad: '/audio/r34/idle_off.wav' },
       { rpm: 1250, onLoad: '/audio/r34/low_on.wav', offLoad: '/audio/r34/low_off.wav' },
@@ -90,6 +92,21 @@ export const R34Config: VehicleConfig = {
       { rpm: 7000, onLoad: '/audio/r34/redline_on.wav', offLoad: '/audio/r34/redline_off.wav' },
     ],
     gain: .82, minPitch: .75, maxPitch: 1.4, rpmResponse: 14, loadResponse: 9,
+    turbo: {
+      enabled: true,
+      spoolRate: 3.2,
+      blowOffThreshold: 0.32,
+      maxWhineGain: 0.16,
+    },
+    transmission: {
+      enabled: false,
+      pitchMultiplier: 1.0,
+      gearWhineGain: 0.02,
+    },
+    exhaust: {
+      overrunBurble: true,
+      shiftPop: false,
+    },
   },
   displaySpecs: {
     category: '1999 · LEGENDARY GT',

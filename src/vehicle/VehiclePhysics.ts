@@ -25,6 +25,8 @@ export interface WheelTelemetry {
   fy: number;
   combinedForce: number;
   capacity: number;
+  slipVelocity: number;
+  slidingPower: number;
 }
 
 export type DynamicState = 'GRIP' | 'SCRUB' | 'UNDERSTEER' | 'OVERSTEER' | 'DRIFT' | 'SPIN' | 'BURNOUT';
@@ -47,6 +49,7 @@ export class VehiclePhysics {
   brakeAmount = 0; slip = 0; height = 0; surfacePitch = 0; surfaceRoll = 0;
   /** Selected drive direction is independent of rollback on an incline. */
   driveDirection: 1 | -1 = 1;
+  get isReversing(): boolean { return this.driveDirection === -1 || this.speed < -0.05; }
   heave = 0; heaveVelocity = 0; rollVelocity = 0; pitchVelocity = 0; wheelSpin = 0;
   wheelHeights = [0,0,0,0]; wheelSpins = [0,0,0,0];
 
@@ -65,10 +68,10 @@ export class VehiclePhysics {
   slipPower = [0, 0, 0, 0];
   smokeEnergy = [0, 0, 0, 0];
   wheelsTelemetry: [WheelTelemetry, WheelTelemetry, WheelTelemetry, WheelTelemetry] = [
-    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0 },
-    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0 },
-    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0 },
-    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0 }
+    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0, slipVelocity: 0, slidingPower: 0 },
+    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0, slipVelocity: 0, slidingPower: 0 },
+    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0, slipVelocity: 0, slidingPower: 0 },
+    { speed: 0, groundSpeed: 0, slipRatio: 0, slipAngle: 0, normalLoad: 0, fx: 0, fy: 0, combinedForce: 0, capacity: 0, slipVelocity: 0, slidingPower: 0 }
   ];
 
   previousPose:VehiclePose={s:0,offset:0,heading:0,height:0,steering:0,surfacePitch:0,surfaceRoll:0,roll:0,pitch:0,heave:0,wheelHeights:[0,0,0,0],wheelSpins:[0,0,0,0],wheelSpin:0};
@@ -422,47 +425,100 @@ export class VehiclePhysics {
     // =========================================================================
     // PER-WHEEL TELEMETRY & EMISSIONS (SLIP POWER & SMOKE ENERGY)
     // =========================================================================
-    const wSpeeds = [speed, speed, speed + (this.engineLoad > 0.4 ? speed * 0.15 + 0.5 : 0), speed + (this.engineLoad > 0.4 ? speed * 0.15 + 0.5 : 0)];
+    const isLaunchBurnout = !reversing && speed < 2.5 && this.throttle > 0.6;
+    const rearTractionExceeded = Math.max(0, Math.abs(rearDrive) - rearMaxCapacity * 0.95) / Math.max(1, rearMaxCapacity);
+    const drivenSpin = isLaunchBurnout 
+      ? 2.8 * this.throttle 
+      : (rearTractionExceeded > 0 ? rearTractionExceeded * 4.0 : 0);
+    const frontSpin = isLaunchBurnout 
+      ? 2.8 * this.throttle * c.engine.frontDriveShare 
+      : 0;
+
+    // Contact-patch relative velocities in wheel reference frame:
+    // Front steered wheels (FL, FR)
+    const vGroundLongFront = vFrontWheelLong;
+    const vGroundLatFront = vFrontWheelLat;
+    const vSlipLongFront = frontSpin; // Rolling under normal/ABS braking (vSlipLong = 0)
+    // Front lateral slip occurs only when slip angle exceeds linear grip region (~0.065 rad)
+    const frontSlideFraction = clamp((Math.abs(frontSlip) - 0.065) / 0.10, 0, 1.0);
+    const vSlipLatFront = vGroundLatFront * frontSlideFraction;
+    const vSlipFront = Math.hypot(vSlipLongFront, vSlipLatFront);
+
+    // Rear unsteered wheels (RL, RR)
+    const vGroundLongRear = speed;
+    const vGroundLatRear = vRearChassisLat;
+    // Handbrake locks rear wheels when pulled at speed (cable handbrake has no ABS)
+    const handbrakeLock = clamp((this.input.handbrake - 0.20) / 0.55, 0, 1.0);
+    const vSlipLongRear = drivenSpin - vGroundLongRear * handbrakeLock;
+    // Rear lateral slip occurs when exceeding linear grip region or in established drift
+    const rearSlideFraction = Math.max(
+      clamp((Math.abs(rearSlip) - 0.065) / 0.08, 0, 1.0),
+      clamp(this.driftIntensity * 1.25, 0, 1.0)
+    );
+    const vSlipLatRear = vGroundLatRear * rearSlideFraction;
+    const vSlipRear = Math.hypot(vSlipLongRear, vSlipLatRear);
+
+    const wSpeeds = [
+      vGroundLongFront + vSlipLongFront,
+      vGroundLongFront + vSlipLongFront,
+      vGroundLongRear + vSlipLongRear,
+      vGroundLongRear + vSlipLongRear
+    ];
     const wNormals = [frontLoad * 0.5, frontLoad * 0.5, rearLoad * 0.5, rearLoad * 0.5];
     const wCapacities = [frontMaxCapacity * 0.5, frontMaxCapacity * 0.5, rearMaxCapacity * 0.5, rearMaxCapacity * 0.5];
-    const wFx = [frontDrive * 0.5 - frontBrake * 0.5, frontDrive * 0.5 - frontBrake * 0.5, rearDrive * 0.5 - (rearBrake + handbrake) * 0.5, rearDrive * 0.5 - (rearBrake + handbrake) * 0.5];
-    const wFy = [frontWheelLateralForce * 0.5, frontWheelLateralForce * 0.5, rearWheelLateralForce * 0.5, rearWheelLateralForce * 0.5];
-    const wAlphas = [frontSlip, frontSlip, rearSlip, rearSlip];
-    const wSlips = [
-      Math.abs(vFrontWheelLat),
-      Math.abs(vFrontWheelLat),
-      Math.abs(vRearChassisLat),
-      Math.abs(vRearChassisLat)
+    const wFx = [
+      frontDrive * 0.5 - frontBrake * 0.5,
+      frontDrive * 0.5 - frontBrake * 0.5,
+      rearDrive * 0.5 - (rearBrake + handbrake) * 0.5,
+      rearDrive * 0.5 - (rearBrake + handbrake) * 0.5
     ];
+    const wFy = [
+      frontWheelLateralForce * 0.5,
+      frontWheelLateralForce * 0.5,
+      rearWheelLateralForce * 0.5,
+      rearWheelLateralForce * 0.5
+    ];
+    const wAlphas = [frontSlip, frontSlip, rearSlip, rearSlip];
+    const wSlipVels = [vSlipFront, vSlipFront, vSlipRear, vSlipRear];
+    const wSlipLongs = [vSlipLongFront, vSlipLongFront, vSlipLongRear, vSlipLongRear];
+    const wSlipLats = [vSlipLatFront, vSlipLatFront, vSlipLatRear, vSlipLatRear];
 
     for (let w = 0; w < 4; w++) {
-      const slidingVelocity = wSlips[w];
+      const slidingVelocity = wSlipVels[w];
       const frictionMagnitude = Math.hypot(wFx[w], wFy[w]);
-      this.slipPower[w] = frictionMagnitude * slidingVelocity;
+      // True sliding power = |Fx * vSlipLong| + |Fy * vSlipLat|
+      const slidingPower = Math.abs(wFx[w] * wSlipLongs[w]) + Math.abs(wFy[w] * wSlipLats[w]);
+      this.slipPower[w] = slidingPower;
       
-      // Thermal smoke energy accumulator: accumulates during slip, decays when gripped
-      if (this.slip > 0.24 || Math.abs(wAlphas[w]) > 0.14) {
-        this.smokeEnergy[w] = Math.min(4.0, this.smokeEnergy[w] + this.slipPower[w] * dt * 0.0004);
+      const vRefDenom = Math.max(2.0, Math.abs(speed));
+      const slipRatio = (wSpeeds[w] - speed) / vRefDenom;
+      const isSlipping = slidingVelocity > 0.85;
+
+      // Thermal smoke energy accumulator: integrates true sliding power, decays when gripped
+      if (isSlipping && slidingPower > 150) {
+        this.smokeEnergy[w] = Math.min(4.0, this.smokeEnergy[w] + this.slipPower[w] * dt * 0.00035);
       } else {
-        this.smokeEnergy[w] = Math.max(0, this.smokeEnergy[w] - 2.5 * dt);
+        this.smokeEnergy[w] = Math.max(0, this.smokeEnergy[w] - 3.5 * dt);
       }
 
       this.wheelsTelemetry[w] = {
         speed: wSpeeds[w],
         groundSpeed: speed,
-        slipRatio: (wSpeeds[w] - speed) / Math.max(1.0, speed),
+        slipRatio: slipRatio,
         slipAngle: wAlphas[w],
         normalLoad: wNormals[w],
         fx: wFx[w],
         fy: wFy[w],
         combinedForce: frictionMagnitude,
-        capacity: wCapacities[w]
+        capacity: wCapacities[w],
+        slipVelocity: slidingVelocity,
+        slidingPower: slidingPower
       };
     }
     this.drivenWheelSlip = Math.max(Math.abs(this.wheelsTelemetry[2].slipRatio), Math.abs(this.wheelsTelemetry[3].slipRatio));
 
     // Dynamic State Classification
-    if (speed < 1.0 && this.throttle > 0.7 && this.rpm > 4500) {
+    if (!reversing && Math.abs(speed) < 1.0 && this.throttle > 0.7 && this.rpm > 4500) {
       this.dynamicState = 'BURNOUT';
     } else if (Math.abs(bodySlipAngle) > 0.65 || Math.abs(this.yawRate) > 1.8) {
       this.dynamicState = 'SPIN';

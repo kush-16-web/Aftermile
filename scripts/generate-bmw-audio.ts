@@ -40,93 +40,189 @@ function encodeWav(samples: Float32Array, sampleRate = 48000): Buffer {
   return buffer;
 }
 
-function synthesizeP58Band(rpm: number, isOnLoad: boolean, sampleRate = 48000, duration = 2.0): Float32Array {
-  const numSamples = Math.floor(sampleRate * duration);
-  const data = new Float32Array(numSamples);
-  // Fundamental firing frequency for inline-6: RPM / 60 * 3 = RPM / 20
-  const f0 = rpm / 20;
-  // Racing dog-ring straight-cut gearbox whine
-  const fGear = (rpm / 60) * 18;
-  // Turbocharger compressor spool
-  const fTurbo = 2600 + rpm * 0.45;
-
-  // Pre-generate periodic noise for racing intake/exhaust turbulence
-  const noise = new Float32Array(numSamples);
-  for (let i = 0; i < numSamples; i++) {
-    noise[i] = Math.random() * 2 - 1;
-  }
-  // Smooth circular wrap for seamless loop
-  const noiseSeam = 1024;
-  for (let i = 0; i < noiseSeam; i++) {
-    const frac = 0.5 * (1 - Math.cos((i / noiseSeam) * Math.PI));
-    noise[i] = noise[numSamples - noiseSeam + i] * (1 - frac) + noise[i] * frac;
-    noise[numSamples - noiseSeam + i] = noise[i];
-  }
-
-  for (let i = 0; i < numSamples; i++) {
-    const t = i / sampleRate;
-    let s = 0;
-
-    if (isOnLoad) {
-      // BMW P58 3.0L Twin-Turbo Inline-6 GT3 Racing Engine Character:
-      // Crisp, dry, raspy, metallic bark with strong upper harmonics and sequential gearbox whine
-      s += 0.32 * Math.sin(2 * Math.PI * f0 * t);
-      s += 0.34 * Math.sin(2 * Math.PI * 2 * f0 * t + 0.4);
-      s += 0.38 * Math.sin(2 * Math.PI * 3 * f0 * t + 0.9); // GT3 signature aggressive 3rd harmonic
-      s += 0.22 * Math.sin(2 * Math.PI * 4 * f0 * t + 1.2);
-      s += 0.26 * Math.sin(2 * Math.PI * 5 * f0 * t + 0.3); // Sharp racing timbre
-      s += 0.20 * Math.sin(2 * Math.PI * 6 * f0 * t + 0.8);
-      s += 0.12 * Math.sin(2 * Math.PI * 8 * f0 * t + 1.5);
-      s += 0.08 * Math.sin(2 * Math.PI * 9 * f0 * t + 2.1); // High metallic scream
-
-      // Sharp asymmetric race combustion pulse
-      const pulse = Math.sin(2 * Math.PI * f0 * t);
-      s += 0.16 * (pulse > 0 ? Math.pow(pulse, 4) : -Math.pow(-pulse, 2));
-
-      // Sequential straight-cut racing gearbox whine
-      s += 0.05 * Math.sin(2 * Math.PI * fGear * t + 0.5);
-      // Twin-turbo compressor hiss
-      s += 0.03 * Math.sin(2 * Math.PI * fTurbo * t) * (1 + 0.3 * Math.sin(2 * Math.PI * f0 * t));
-
-      // Open racing exhaust intake air turbulence
-      s += noise[i] * 0.04;
-    } else {
-      // Off-load / deceleration: dry race overrun, engine braking, raspy pulse decay
-      s += 0.40 * Math.sin(2 * Math.PI * f0 * t);
-      s += 0.28 * Math.sin(2 * Math.PI * 2 * f0 * t + 0.2);
-      s += 0.18 * Math.sin(2 * Math.PI * 3 * f0 * t + 0.5);
-      s += 0.09 * Math.sin(2 * Math.PI * 4 * f0 * t + 0.7);
-      s += 0.06 * Math.sin(2 * Math.PI * 6 * f0 * t + 1.1);
-
-      // Decel gearbox whine
-      s += 0.04 * Math.sin(2 * Math.PI * fGear * t + 0.2);
-
-      // Burble and overrun exhaust turbulence
-      s += noise[i] * 0.022;
-    }
-
-    data[i] = s;
-  }
-
-  // Remove DC offset
-  let dc = 0;
-  for (let i = 0; i < numSamples; i++) dc += data[i];
-  dc /= numSamples;
-  for (let i = 0; i < numSamples; i++) data[i] -= dc;
-
-  // Normalize peak to 0.45
-  let peak = 0;
-  for (let i = 0; i < numSamples; i++) peak = Math.max(peak, Math.abs(data[i]));
-  if (peak > 0) {
-    const scale = 0.45 / peak;
-    for (let i = 0; i < numSamples; i++) data[i] *= scale;
-  }
-
-  return data;
+interface CombustionConfig {
+  cylinders: number;
+  firingOrderOffsets: number[]; // degrees 0-720
+  wiebeA: number;
+  wiebeB: number;
+  pulseWidthDeg: number;
+  exhaustPipeDelaySec: number;
+  exhaustReflection: number;
+  intakeWeight: number;
+  mechanicalWeight: number;
+  turbulenceWeight: number;
+  raspHarmonic: number;
+  raspWeight: number;
+  highMetallicHarmonic: number;
+  highMetallicWeight: number;
+  saturation: number;
+  filterCutoffHz: number;
 }
 
-const bands = [
-  { rpm: 900, name: 'idle' },
+function synthesizePhysicalCombustionLoop(
+  rpm: number,
+  isOnLoad: boolean,
+  config: CombustionConfig,
+  sampleRate = 48000,
+  targetDuration = 2.0
+): Float32Array {
+  const cycleFreq = rpm / 120; // 720 deg cycles per second for 4-stroke
+  const numCycles = Math.max(1, Math.round(targetDuration * cycleFreq));
+  const exactDuration = numCycles / cycleFreq;
+  const numSamples = Math.round(exactDuration * sampleRate);
+
+  const seamSamples = 1024;
+  const pipeDelaySamples = Math.max(1, Math.round(config.exhaustPipeDelaySec * sampleRate));
+  const delayBuffer = new Float32Array(pipeDelaySamples);
+  let delayIdx = 0;
+
+  // Run warm-up pass so delay lines and IIR filters reach steady-state periodic equilibrium
+  const warmUpSamples = numSamples;
+  const totalSamples = warmUpSamples + numSamples + seamSamples;
+  const rawBuffer = new Float32Array(numSamples + seamSamples);
+
+  let lpState = 0;
+  const rc = 1 / (2 * Math.PI * config.filterCutoffHz);
+  const alpha = (1 / sampleRate) / (rc + 1 / sampleRate);
+
+  // Pseudo-random noise with smooth periodic wrap for stationary turbulence
+  const noisePeriod = Math.min(numSamples, 24000);
+  const noiseTable = new Float32Array(noisePeriod);
+  for (let j = 0; j < noisePeriod; j++) {
+    noiseTable[j] = Math.random() * 2 - 1;
+  }
+  const seamN = 256;
+  for (let j = 0; j < seamN; j++) {
+    const f = 0.5 * (1 - Math.cos((j / seamN) * Math.PI));
+    noiseTable[j] = noiseTable[noisePeriod - seamN + j] * (1 - f) + noiseTable[j] * f;
+    noiseTable[noisePeriod - seamN + j] = noiseTable[j];
+  }
+
+  for (let i = 0; i < totalSamples; i++) {
+    const t = i / sampleRate;
+    const cyclePhase = (t * cycleFreq) % 1;
+    const crankAngleDeg = cyclePhase * 720;
+
+    let cylinderPressure = 0;
+    let intakeSuction = 0;
+    let valveNoise = 0;
+
+    for (let c = 0; c < config.cylinders; c++) {
+      const offset = config.firingOrderOffsets[c];
+      const deg = (crankAngleDeg - offset + 720) % 720;
+
+      // Exhaust stroke combustion pressure wave
+      if (deg < config.pulseWidthDeg) {
+        const norm = deg / config.pulseWidthDeg;
+        // High compression racing flame front: steep explosive rise, fast expansion
+        const p = Math.pow(norm, config.wiebeA) * Math.exp(-config.wiebeB * norm);
+        cylinderPressure += p;
+      }
+
+      // Intake suction stroke (360 deg out of phase with exhaust)
+      const intakeDeg = (deg + 360) % 720;
+      if (intakeDeg < config.pulseWidthDeg * 1.3) {
+        const norm = intakeDeg / (config.pulseWidthDeg * 1.3);
+        intakeSuction += Math.sin(norm * Math.PI) * (1 - norm * 0.3);
+      }
+
+      // High-RPM racing solid-lifter valvetrain click
+      if (Math.abs(deg - config.pulseWidthDeg) < 3.0) {
+        valveNoise += (noiseTable[i % noisePeriod]) * 0.6;
+      }
+    }
+
+    // Racing open header delay-line comb filtering (acoustic pipe resonance)
+    const delayed = delayBuffer[delayIdx];
+    const exhaustWave = cylinderPressure + delayed * config.exhaustReflection;
+    delayBuffer[delayIdx] = cylinderPressure + delayed * (config.exhaustReflection * 0.72);
+    delayIdx = (delayIdx + 1) % pipeDelaySamples;
+
+    // Gas flow turbulence (racing exhaust velocity)
+    const flowNoise = noiseTable[i % noisePeriod];
+    const flowScale = isOnLoad ? (cylinderPressure * 0.75 + 0.35) : 0.28;
+    const turbulence = flowNoise * flowScale * config.turbulenceWeight;
+
+    // GT3 signature aggressive 3rd and 5th harmonic rasp
+    const f0 = (rpm / 60) * 3; // inline-6 cylinder event rate
+    const rasp = Math.sin(2 * Math.PI * f0 * config.raspHarmonic * t) * cylinderPressure * config.raspWeight;
+    const metallicRing = Math.sin(2 * Math.PI * f0 * config.highMetallicHarmonic * t + 0.8) * cylinderPressure * config.highMetallicWeight;
+
+    // Combined physical acoustic wave
+    let wave = exhaustWave + intakeSuction * config.intakeWeight + valveNoise * config.mechanicalWeight + turbulence + rasp + metallicRing;
+
+    // Non-linear racing header saturation (harder clip / dry metallic edge)
+    wave = Math.tanh(wave * config.saturation);
+
+    // Acoustic lowpass damping
+    lpState = lpState + alpha * (wave - lpState);
+
+    if (i >= warmUpSamples) {
+      rawBuffer[i - warmUpSamples] = lpState;
+    }
+  }
+
+  // Crossfade boundary over seamSamples
+  const output = new Float32Array(numSamples);
+  for (let i = 0; i < numSamples; i++) {
+    if (i < seamSamples) {
+      const f = 0.5 * (1 - Math.cos((i / seamSamples) * Math.PI));
+      output[i] = rawBuffer[numSamples + i] * (1 - f) + rawBuffer[i] * f;
+    } else {
+      output[i] = rawBuffer[i];
+    }
+  }
+
+  // Exact DC Offset Removal
+  let dc = 0;
+  for (let i = 0; i < numSamples; i++) dc += output[i];
+  dc /= numSamples;
+  for (let i = 0; i < numSamples; i++) output[i] -= dc;
+
+  // Peak normalization to 0.450
+  let peak = 0;
+  for (let i = 0; i < numSamples; i++) peak = Math.max(peak, Math.abs(output[i]));
+  if (peak > 0) {
+    const scale = 0.45 / peak;
+    for (let i = 0; i < numSamples; i++) output[i] *= scale;
+  }
+
+  return output;
+}
+
+// -------------------------------------------------------------
+// BMW M4 GT3 EVO (BMW P58 3.0L Twin-Turbo Inline-6 GT3 Engine)
+// Dedicated GT3 Race Car Profile:
+// - Sharp, explosive combustion flame front (10.5:1 compression)
+// - Open 3-into-1 racing header pipe resonance (4.2 ms delay)
+// - Aggressive 3rd and 5th harmonic dry metallic cylinder rasp
+// - Raw unbaffled exhaust crackle & crisp overrun deceleration
+// -------------------------------------------------------------
+function synthesizeP58Band(rpm: number, isOnLoad: boolean): Float32Array {
+  const config: CombustionConfig = {
+    cylinders: 6,
+    firingOrderOffsets: [0, 120, 240, 360, 480, 600], // 1-5-3-6-2-4 standard I6
+    wiebeA: isOnLoad ? 1.85 : 1.45,
+    wiebeB: isOnLoad ? 3.6 : 2.9,
+    pulseWidthDeg: isOnLoad ? 86 : 98,
+    exhaustPipeDelaySec: 0.0042, // 4.2 ms short open racing pipe
+    exhaustReflection: isOnLoad ? 0.74 : 0.56,
+    intakeWeight: isOnLoad ? 0.32 : 0.18,
+    mechanicalWeight: isOnLoad ? 0.22 : 0.14,
+    turbulenceWeight: isOnLoad ? 0.28 : 0.18,
+    raspHarmonic: 3.0,
+    raspWeight: isOnLoad ? 0.42 : 0.22,
+    highMetallicHarmonic: 5.0,
+    highMetallicWeight: isOnLoad ? 0.28 : 0.12,
+    saturation: isOnLoad ? 1.75 : 1.35,
+    filterCutoffHz: isOnLoad ? 6400 : 4500,
+  };
+
+  return synthesizePhysicalCombustionLoop(rpm, isOnLoad, config);
+}
+
+const bmwBands = [
+  { rpm: 900,  name: 'idle' },
   { rpm: 1400, name: 'low' },
   { rpm: 2200, name: 'mid_low' },
   { rpm: 3200, name: 'mid' },
@@ -135,22 +231,22 @@ const bands = [
   { rpm: 7500, name: 'redline' },
 ];
 
-const outDir = join(process.cwd(), 'public', 'audio', 'bmw_m4_gt3');
-mkdirSync(outDir, { recursive: true });
+const bmwOutDir = join(process.cwd(), 'public', 'audio', 'bmw_m4_gt3');
+mkdirSync(bmwOutDir, { recursive: true });
 
-console.log('Generating 7-band BMW P58 GT3 audio loops in', outDir);
+console.log('Generating Physical 4-Stroke BMW P58 GT3 Combustion Audio Loops in', bmwOutDir);
 
-for (const band of bands) {
+for (const band of bmwBands) {
   const onData = synthesizeP58Band(band.rpm, true);
   const offData = synthesizeP58Band(band.rpm, false);
 
   const onWav = encodeWav(onData);
   const offWav = encodeWav(offData);
 
-  writeFileSync(join(outDir, `${band.name}_on.wav`), onWav);
-  writeFileSync(join(outDir, `${band.name}_off.wav`), offWav);
+  writeFileSync(join(bmwOutDir, `${band.name}_on.wav`), onWav);
+  writeFileSync(join(bmwOutDir, `${band.name}_off.wav`), offWav);
 
   console.log(`Generated ${band.name}_on.wav (${band.rpm} RPM On-Load) and ${band.name}_off.wav (${band.rpm} RPM Off-Load)`);
 }
 
-console.log('BMW P58 Audio generation completed!');
+console.log('BMW audio generation complete!');

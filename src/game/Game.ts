@@ -210,7 +210,7 @@ export class Game {
     canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.running = false; this.pause(); this.ui.toast('Graphics paused. Waiting for your browser to restore the display.'); });
     canvas.addEventListener('webglcontextrestored', () => { this.running = true; this.lastTime = 0; this.ui.toast('Graphics restored. Resume when you are ready.'); });
     this.resize(); void this.loadVehicles();
-    if (import.meta.env.DEV) void import('../vehicle/VehicleDebug.ts').then(({ VehicleDebug }) => { this.debug = new VehicleDebug(this.vehicle, () => this.cameras.initialized = false); });
+    if (import.meta.env.DEV) void import('../vehicle/VehicleDebug.ts').then(({ VehicleDebug }) => { this.debug = new VehicleDebug(this.vehicle, () => this.cameras.initialized = false, () => this.audio); });
     requestAnimationFrame(t => this.frame(t));
   }
 
@@ -324,7 +324,7 @@ export class Game {
       this.garage.update(dt, origin);
     }
     this.position.copy(this.hero.group.position);
-    this.effects.update(dt, this.time, this.car, this.hero, this.camera, w.wet, w.snow);
+    this.effects.update(dt, this.time, this.car, this.hero, this.camera, w, this.sky.night);
     this.cameras.update(dt, this.cinematicTime, this.car, pose, origin, this.screen === 'menu', s.fov, s.smoothing, s.reducedMotion);
     const inTunnel=this.road.isTunnel(this.car.s);
     this.sky.update(moving?dt:0,this.cinematicTime,this.camera,this.position,w,s.timeMode,s.hour,this.weather.mode==='live'?this.weather.city?.timezone:undefined,s.reducedFlashes);
@@ -338,7 +338,7 @@ export class Game {
     this.world.materials.update(w.wet,w.snow,w.autumn,this.sky.night,s.reflections,signalState(this.time),this.cinematicTime,w.wind);this.season.snow.value=w.snow;this.season.autumn.value=w.autumn;
     const wWeights=this.road.weights(this.car.s);
     const waterProximity=Math.max(0,Math.min(1,Math.max(wWeights.bridge*1.0,wWeights.coast*0.92,this.road.isBridge(this.car.s)?1.0:0)));
-    this.audio.update(this.vehicle.audioState(),w.wet,inTunnel,!moving,s,this.cameras.mode===3,waterProximity);
+    this.audio.update(this.vehicle.audioState(this.cameras.mode, w.wet, w.snow), w.wet, inTunnel, !moving, s, this.cameras.mode === 3, waterProximity);
     const danger=Math.max(this.traffic.sense,this.car.collisionTimer>.6?.65:0);
     if(danger>.5&&this.lastSense<=0&&moving&&s.sense>0){this.audio.chime(true);this.lastSense=5;}this.lastSense-=dt;
     this.companion.update(dt,this.cinematicTime,danger,this.zen?100:this.car.fuel,this.weather.condition,this.car.cleanDistance,s.reducedMotion);

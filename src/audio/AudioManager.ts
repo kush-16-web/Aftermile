@@ -70,7 +70,7 @@ export class AudioManager {
       noise.connect(rainFilter).connect(this.rain);
       noise.start();
 
-      // Spatial Water & Ocean Ambience Synthesis
+      // Spatial Water & Ocean Ambience Synthesis (Airy shore/wave texture)
       const waterBuffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
       const wData = waterBuffer.getChannelData(0);
       let wAcc = 0;
@@ -82,32 +82,13 @@ export class AudioManager {
       wNoise.buffer = waterBuffer;
       wNoise.loop = true;
       const waterFilter = ctx.createBiquadFilter();
-      waterFilter.type = 'lowpass';
-      waterFilter.frequency.value = 380;
+      waterFilter.type = 'bandpass';
+      waterFilter.frequency.value = 1100;
+      waterFilter.Q.value = 0.8;
       wNoise.connect(waterFilter).connect(this.waterGain);
       wNoise.start();
 
-      // Ambient Pad Chords
-      const padFilter = ctx.createBiquadFilter();
-      padFilter.type = 'lowpass';
-      padFilter.frequency.value = 320;
-      padFilter.connect(this.pad);
-      for (const [i, f] of [110, 164.81, 220, 261.63].entries()) {
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = f;
-        const g = ctx.createGain();
-        g.gain.value = 0.006;
-        osc.connect(g).connect(padFilter);
-        const lfo = ctx.createOscillator();
-        lfo.frequency.value = 0.04 + i * 0.006;
-        const lfoGain = ctx.createGain();
-        lfoGain.gain.value = 0.003;
-        lfo.connect(lfoGain).connect(g.gain);
-        lfo.start();
-        osc.start();
-      }
-
+      // Ambient Pad channel (silent unless explicit audio buffer is attached)
       await ctx.resume();
     } catch {
       this.available = false;
@@ -142,7 +123,10 @@ export class AudioManager {
     const set = (p: AudioParam, value: number) => p.setTargetAtTime(value, t, 0.1);
 
     set(this.master.gain, paused ? 0 : settings.master * 0.7);
-    this.vehicle.update(state, settings.engine * (cockpit ? 0.92 : 1), settings.environment * (cockpit ? 0.55 : 1), tunnel);
+    if (state.cameraMode === undefined) {
+      state.cameraMode = cockpit ? 3 : 0;
+    }
+    this.vehicle.update(state, settings.engine, settings.environment, tunnel);
     set(this.rain.gain, settings.environment * wet * (tunnel ? 0.03 : cockpit ? 0.35 : 0.65));
     set(this.waterGain.gain, paused ? 0 : settings.environment * waterProximity * (tunnel ? 0.02 : cockpit ? 0.28 : 0.65));
     set(this.pad.gain, settings.music);

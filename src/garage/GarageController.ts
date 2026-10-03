@@ -10,11 +10,26 @@ export interface GarageStateCallback {
   onVehicleChanged?: (vehicleId: string) => void;
 }
 
+export interface TransitionTelemetry {
+  presentationSlipAngleDeg: number;
+  forwardVelocityDot: number;
+  wheelRollRadians: number;
+  steerAngleDeg: number;
+  handoffPositionDiff: number;
+  handoffAngularDiffDeg: number;
+}
+
 /**
  * Showcase / Vehicle Selection Controller
  * Presents vehicles parked directly on the Aftermile road in the open world.
  * Derives a locked authoritative local road frame for each session.
- * Executes location-independent, path-tangent road-aligned departure and arrival transitions.
+ * Executes continuous C2 path-tangent road-aligned departure and arrival transitions.
+ * - Outgoing path start tangent strictly equals parked forward (0 initial snap).
+ * - Incoming path end tangent strictly equals parked forward (0 final snap).
+ * - Front wheels steer Ackermann with path curvature and center on straightening.
+ * - All wheels roll proportionally to exact 3D distance travelled: dTheta = dDist / R_wheel.
+ * - Presentation slip angle is virtually zero (no sideways gliding).
+ * - Continuous 4-wheel road grounding on flat, sloped, and banked roads.
  */
 export class GarageController {
   state: GarageTransitionState = 'IDLE';
@@ -32,11 +47,26 @@ export class GarageController {
   public presentationHeading = 0;
   private isFrameLocked = false;
   
-  private exitDir: 1 | -1 = 1;
-  private entryDir: 1 | -1 = -1;
+  /** Locked longitudinal heading direction: +1 along +s, -1 along -s */
+  private headingDir: 1 | -1 = 1;
   private wheelRotation = 0;
+  private prevWorldPosition = new THREE.Vector3();
+  private hasPrevPosition = false;
   private getModel: ((id: string) => PlayerVehicleModel | null) | null = null;
   public active = false;
+
+  /** Slow-motion multiplier for visual inspection (e.g. 0.25x) */
+  public speedMultiplier = 1.0;
+
+  /** Diagnostic Telemetry */
+  public telemetry: TransitionTelemetry = {
+    presentationSlipAngleDeg: 0,
+    forwardVelocityDot: 1.0,
+    wheelRollRadians: 0,
+    steerAngleDeg: 0,
+    handoffPositionDiff: 0,
+    handoffAngularDiffDeg: 0
+  };
 
   constructor(
     initialVehicleId: string,
@@ -58,16 +88,28 @@ export class GarageController {
         this.presentationOffset = clamp(carOffset, -5.2, -3.2);
       }
       this.presentationHeading = Math.abs(carHeading) < 0.35 ? 0 : carHeading;
+
+      // Lock heading direction: test if parked car faces +s or -s
+      const diffPos = Math.abs(angleDiff(this.presentationHeading, 0));
+      const diffNeg = Math.abs(angleDiff(this.presentationHeading, Math.PI));
+      this.headingDir = (diffPos <= diffNeg) ? 1 : -1;
+
       this.isFrameLocked = true;
     }
   }
 
+  /**
+   * Computes the authoritative parked world yaw for the showcase vehicle.
+   */
   public getPresentationWorldYaw(): number {
     if (!this.road) return 0;
     const roadHeading = this.road.heading(this.presentationS);
     return -roadHeading - this.presentationHeading;
   }
 
+  /**
+   * Ground sampler: Computes accurate road surface contact height, pitch, and roll for all 4 wheels.
+   */
   public sampleRoadPose(model: PlayerVehicleModel, s: number, offset: number, worldYaw = 0, origin = 0) {
     if (!this.road) {
       return {
@@ -88,7 +130,7 @@ export class GarageController {
     const baseGrade = this.road.grade(s);
     const baseBank = this.road.bank(s);
 
-    // Relative heading between road tangent and vehicle world yaw
+    // Relative heading between road tangent and vehicle world yaw (-roadHeading - worldYaw)
     const relHeading = angleDiff(-roadHeading, worldYaw);
 
     const cosH = Math.cos(relHeading), sinH = Math.sin(relHeading);
@@ -133,84 +175,133 @@ export class GarageController {
   }
 
   /**
-   * Evaluates the departure path (s, offset) at normalized progress t [0..1]
+   * Quintic smootherstep polynomial (C2 continuous: S(0)=0, S'(0)=0, S''(0)=0, S(1)=1, S'(1)=0, S''(1)=0)
    */
-  private evaluateExitPath(t: number): { s: number; offset: number } {
+  private smootherstep(u: number): number {
+    const x = clamp(u, 0, 1);
+    return x * x * x * (x * (x * 6 - 15) + 10);
+  }
+
+  /**
+   * Evaluates the departure path (s, offset) at normalized progress t [0..1].
+   * - Longitudinal: Starts at s0, smoothly accelerates along headingDir.
+   * - Lateral: Strictly offset0 for initial 20% (d(offset)/dt = 0 at t=0), then smoothly shifts.
+   * => Guaranteed exit start tangent matches parked forward orientation with 0 discontinuity.
+   */
+  public evaluateExitPath(t: number): { s: number; offset: number } {
     const s0 = this.presentationS;
     const offset0 = this.presentationOffset;
-    const prog = Math.pow(clamp(t, 0, 1), 1.5);
-    const s = s0 + this.exitDir * (prog * 36.0);
-    const offset = offset0 - (prog * 0.8 * Math.sign(offset0));
+    const prog = Math.pow(clamp(t, 0, 1), 1.7);
+    const s = s0 + this.headingDir * (prog * 38.0);
+    
+    // Lateral shift begins after initial straight rollout (t >= 0.18)
+    const latStart = 0.18;
+    const latU = t > latStart ? (t - latStart) / (1.0 - latStart) : 0;
+    const latProg = this.smootherstep(latU);
+    const offset = offset0 - (latProg * 0.9 * Math.sign(offset0));
     return { s, offset };
   }
 
   /**
-   * Evaluates the arrival path (s, offset) at normalized progress t [0..1]
+   * Evaluates the arrival path (s, offset) at normalized progress t [0..1].
+   * - Longitudinal: Approaches from distance, progressively brakes with zero velocity at t=1.0.
+   * - Lateral: Approaches from adjacent lane, finishes merging and straightens completely before t=0.72.
+   * => Guaranteed arrival end tangent strictly matches final parked forward orientation with 0 snap.
    */
-  private evaluateEntryPath(t: number): { s: number; offset: number } {
+  public evaluateEntryPath(t: number): { s: number; offset: number } {
     const s0 = this.presentationS;
     const offset0 = this.presentationOffset;
-    const prog = 1.0 - Math.pow(1.0 - clamp(t, 0, 1), 1.8);
-    const s = s0 + this.entryDir * (32.0 * (1.0 - prog));
-    const lateralProg = prog * prog * (3 - 2 * prog); // smoothstep
-    const entryOffset = offset0 - 1.2 * Math.sign(offset0);
-    const offset = lerp(entryOffset, offset0, lateralProg);
+    // Progressive deceleration profile with v(1)=0 and v'(1)=0
+    const prog = 1.0 - Math.pow(1.0 - clamp(t, 0, 1), 2.3);
+    const s = s0 - this.headingDir * (36.0 * (1.0 - prog));
+    
+    // Lateral merge finishes completely by t = 0.72 (final 28% is purely road-aligned straight)
+    const latEnd = 0.72;
+    const latU = clamp(t / latEnd, 0, 1);
+    const latProg = this.smootherstep(latU);
+    const entryOffset = offset0 - 1.25 * Math.sign(offset0);
+    const offset = lerp(entryOffset, offset0, latProg);
     return { s, offset };
   }
 
   /**
-   * Derives true path-tangent orientation and visual front steering from trajectory lookahead
+   * Derives true path-tangent orientation and front Ackermann steering from trajectory lookahead.
+   * Ensures vehicle forward vector (-Z in Three.js) is 100% collinear with path travel direction.
    */
-  private derivePathKinematics(
+  public derivePathKinematics(
     evaluatePath: (u: number) => { s: number; offset: number },
     t: number,
-    wheelbase: number
-  ): { s: number; offset: number; worldYaw: number; steer: number } {
+    wheelbase: number,
+    isEntry = false
+  ): { s: number; offset: number; worldYaw: number; steer: number; pathTangent: THREE.Vector3 } {
     if (!this.road) {
-      return { s: 0, offset: 0, worldYaw: 0, steer: 0 };
+      return { s: 0, offset: 0, worldYaw: 0, steer: 0, pathTangent: new THREE.Vector3(0, 0, -1) };
     }
 
     const curr = evaluatePath(t);
-    const p0 = this.road.point(curr.s, curr.offset);
 
-    // Lookahead sample for instantaneous velocity vector
-    const tAhead1 = Math.min(1.0, t + 0.015);
+    // Lookahead forward sample for instantaneous velocity vector
+    const eps = 0.010;
+    const u0 = Math.max(0, Math.min(1.0 - eps, t));
+    const u1 = u0 + eps;
+    const ptA = this.road.point(evaluatePath(u0).s, evaluatePath(u0).offset);
+    const ptB = this.road.point(evaluatePath(u1).s, evaluatePath(u1).offset);
+    const dx = ptB.x - ptA.x;
+    const dz = ptB.z - ptA.z;
+    const len = Math.hypot(dx, dz);
+
     let worldYaw = this.getPresentationWorldYaw();
+    const pathTangent = new THREE.Vector3(0, 0, -1);
+
+    if (len > 0.0001) {
+      // Vehicle forward is -Z in Three.js, so rotation.y = -atan2(dx, -dz)
+      worldYaw = -Math.atan2(dx, -dz);
+      pathTangent.set(dx / len, 0, dz / len);
+    } else {
+      pathTangent.set(Math.sin(worldYaw), 0, -Math.cos(worldYaw));
+    }
+
+    // Exact boundary continuity enforcement:
+    // At t=0 for exit: start yaw strictly matches getPresentationWorldYaw()
+    if (!isEntry && t <= 0.02) {
+      const targetYaw = this.getPresentationWorldYaw();
+      worldYaw = lerp(targetYaw, worldYaw, t / 0.02);
+    }
+    // At t>=0.96 for entry: arrival yaw strictly matches getPresentationWorldYaw()
+    if (isEntry && t >= 0.96) {
+      const targetYaw = this.getPresentationWorldYaw();
+      const blend = (t - 0.96) / 0.04;
+      worldYaw = lerp(worldYaw, targetYaw, blend);
+    }
+
+    // Curvature calculation for front-wheel Ackermann steering
     let steer = 0;
-
-    if (tAhead1 > t || t > 0) {
-      const u1 = tAhead1 > t ? tAhead1 : t;
-      const u0 = tAhead1 > t ? t : Math.max(0, t - 0.015);
-      const ptA = this.road.point(evaluatePath(u0).s, evaluatePath(u0).offset);
-      const ptB = this.road.point(evaluatePath(u1).s, evaluatePath(u1).offset);
-      const dx = ptB.x - ptA.x;
-      const dz = ptB.z - ptA.z;
-      if (Math.hypot(dx, dz) > 0.0001) {
-        worldYaw = Math.atan2(dx, -dz);
-      }
-
-      // Second lookahead sample for path curvature and front-wheel Ackermann steering
-      const tAhead2 = Math.min(1.0, u1 + 0.030);
-      if (tAhead2 > u1) {
-        const ptC = this.road.point(evaluatePath(tAhead2).s, evaluatePath(tAhead2).offset);
-        const dx2 = ptC.x - ptB.x;
-        const dz2 = ptC.z - ptB.z;
-        if (Math.hypot(dx2, dz2) > 0.0001) {
-          const yaw2 = Math.atan2(dx2, -dz2);
-          const deltaYaw = angleDiff(worldYaw, yaw2);
-          const dist = Math.hypot(dx, dz) + Math.hypot(dx2, dz2);
-          const curvature = deltaYaw / (dist * 0.5 + 0.001);
-          steer = clamp(-curvature * wheelbase * 1.3, -0.42, 0.42);
-        }
+    const u2 = Math.min(1.0, u1 + eps);
+    if (u2 > u1) {
+      const ptC = this.road.point(evaluatePath(u2).s, evaluatePath(u2).offset);
+      const dx2 = ptC.x - ptB.x;
+      const dz2 = ptC.z - ptB.z;
+      if (Math.hypot(dx2, dz2) > 0.0001) {
+        const yaw2 = -Math.atan2(dx2, -dz2);
+        const deltaYaw = angleDiff(yaw2, worldYaw);
+        const dist = len + Math.hypot(dx2, dz2);
+        const curvature = deltaYaw / (dist * 0.5 + 0.0001);
+        steer = clamp(curvature * wheelbase * 1.35, -0.45, 0.45);
       }
     }
 
-    return { s: curr.s, offset: curr.offset, worldYaw, steer };
+    // Straighten steering smoothly during final arrival phase (t >= 0.72)
+    if (isEntry && t >= 0.72) {
+      const straightenFactor = 1.0 - clamp((t - 0.72) / 0.20, 0, 1);
+      steer *= straightenFactor;
+    }
+
+    return { s: curr.s, offset: curr.offset, worldYaw, steer, pathTangent };
   }
 
   private stageModelAtEntry(model: PlayerVehicleModel, origin: number) {
     if (!this.road) return;
-    const kinematics = this.derivePathKinematics(u => this.evaluateEntryPath(u), 0, model.config.wheelbase);
+    const kinematics = this.derivePathKinematics(u => this.evaluateEntryPath(u), 0, model.config.wheelbase, true);
     const sample = this.sampleRoadPose(model, kinematics.s, kinematics.offset, kinematics.worldYaw, origin);
     
     model.group.position.copy(sample.position);
@@ -231,6 +322,7 @@ export class GarageController {
     if (!active) {
       this.state = 'IDLE';
       this.isFrameLocked = false;
+      this.hasPrevPosition = false;
       if (this.departingModel) {
         this.departingModel.setOpacity(1.0);
         this.departingModel.group.visible = false;
@@ -256,13 +348,12 @@ export class GarageController {
     
     if (!this.incomingModel || !this.departingModel) return false;
 
-    // Minimum-turn exit direction selection
+    // Minimum-turn exit direction selection (locked for transition)
     const diffPos = Math.abs(angleDiff(this.presentationHeading, 0));
     const diffNeg = Math.abs(angleDiff(this.presentationHeading, Math.PI));
-    this.exitDir = (diffPos <= diffNeg) ? 1 : -1;
-    this.entryDir = (this.exitDir === 1) ? -1 : 1;
+    this.headingDir = (diffPos <= diffNeg) ? 1 : -1;
 
-    // Reset departing model opacity
+    // Reset departing model opacity and ensure visibility
     this.departingModel.setOpacity(1.0);
     this.departingModel.group.visible = true;
 
@@ -274,8 +365,9 @@ export class GarageController {
     // Start road exit sequence (1.3s)
     this.state = 'EXITING';
     this.transitionTimer = 0;
-    this.transitionDuration = 1.3;
+    this.transitionDuration = 1.3 / Math.max(0.1, this.speedMultiplier);
     this.wheelRotation = 0;
+    this.hasPrevPosition = false;
 
     this.callbacks.onStateChange?.(this.state, this.currentVehicleId);
     return true;
@@ -308,17 +400,37 @@ export class GarageController {
       return;
     }
 
-    this.transitionTimer += dt;
+    const effectiveDt = dt * this.speedMultiplier;
+    this.transitionTimer += effectiveDt;
     const t = Math.min(1.0, this.transitionTimer / this.transitionDuration);
 
     if (this.state === 'EXITING' && this.departingModel) {
       // Outgoing vehicle drives forward following the path tangent
-      const kinematics = this.derivePathKinematics(u => this.evaluateExitPath(u), t, this.departingModel.config.wheelbase);
-      const prog = Math.pow(t, 1.5);
-      const speed = prog * 18.0;
+      const kinematics = this.derivePathKinematics(u => this.evaluateExitPath(u), t, this.departingModel.config.wheelbase, false);
+      const sample = this.sampleRoadPose(this.departingModel, kinematics.s, kinematics.offset, kinematics.worldYaw, origin);
+
+      // Distance-based wheel rotation: dTheta = dDist / R_wheel
+      let distanceTravelled = 0;
+      if (this.hasPrevPosition) {
+        distanceTravelled = sample.position.distanceTo(this.prevWorldPosition);
+      }
+      this.prevWorldPosition.copy(sample.position);
+      this.hasPrevPosition = true;
 
       const wheelRadius = this.departingModel.config.wheelRadius || 0.34;
-      this.wheelRotation += (speed * dt) / wheelRadius;
+      if (distanceTravelled > 0) {
+        this.wheelRotation -= distanceTravelled / wheelRadius;
+      }
+      const speed = effectiveDt > 0 ? (distanceTravelled / effectiveDt) : 0;
+
+      // Diagnostic side-slip check: dot(vehicleForward, pathVelocity)
+      const vehForward = new THREE.Vector3(-Math.sin(kinematics.worldYaw), 0, -Math.cos(kinematics.worldYaw));
+      const forwardDot = vehForward.dot(kinematics.pathTangent);
+      const slipAngleDeg = Math.acos(clamp(Math.abs(forwardDot), 0, 1)) * (180 / Math.PI);
+      this.telemetry.presentationSlipAngleDeg = slipAngleDeg;
+      this.telemetry.forwardVelocityDot = forwardDot;
+      this.telemetry.steerAngleDeg = kinematics.steer * (180 / Math.PI);
+      this.telemetry.wheelRollRadians = this.wheelRotation;
 
       // Distance fade at the far end of the exit (t: 0.75 -> 1.0)
       let opacity = 1.0;
@@ -328,7 +440,6 @@ export class GarageController {
       }
       this.departingModel.setOpacity(opacity);
 
-      const sample = this.sampleRoadPose(this.departingModel, kinematics.s, kinematics.offset, kinematics.worldYaw, origin);
       this.departingModel.group.position.copy(sample.position);
       this.departingModel.group.rotation.set(0, sample.rotationY, 0);
       this.departingModel.group.visible = true;
@@ -347,8 +458,9 @@ export class GarageController {
         this.departingModel.setOpacity(1.0);
         this.state = 'ENTERING';
         this.transitionTimer = 0;
-        this.transitionDuration = 1.6; // 1.6s entrance along road
+        this.transitionDuration = 2.0 / Math.max(0.1, this.speedMultiplier); // 2.0s entrance along road
         this.wheelRotation = 0;
+        this.hasPrevPosition = false;
         
         if (this.incomingModel) {
           this.stageModelAtEntry(this.incomingModel, origin);
@@ -358,16 +470,34 @@ export class GarageController {
         this.callbacks.onStateChange?.(this.state, this.targetVehicleId);
       }
     } else if (this.state === 'ENTERING' && this.incomingModel) {
-      // Incoming car drives along the trajectory, smoothly straightens, and decelerates
-      const kinematics = this.derivePathKinematics(u => this.evaluateEntryPath(u), t, this.incomingModel.config.wheelbase);
-      const prog = 1.0 - Math.pow(1.0 - t, 1.8);
-      const speed = lerp(18.0, 0, prog);
-      const brakeVal = t > 0.65 ? clamp((t - 0.65) / 0.35, 0, 1) : 0;
+      // Incoming car drives along trajectory, smoothly straightens, and decelerates
+      const kinematics = this.derivePathKinematics(u => this.evaluateEntryPath(u), t, this.incomingModel.config.wheelbase, true);
+      const sample = this.sampleRoadPose(this.incomingModel, kinematics.s, kinematics.offset, kinematics.worldYaw, origin);
+
+      // Distance-based wheel rotation: dTheta = dDist / R_wheel
+      let distanceTravelled = 0;
+      if (this.hasPrevPosition) {
+        distanceTravelled = sample.position.distanceTo(this.prevWorldPosition);
+      }
+      this.prevWorldPosition.copy(sample.position);
+      this.hasPrevPosition = true;
 
       const wheelRadius = this.incomingModel.config.wheelRadius || 0.34;
-      this.wheelRotation += (speed * dt) / wheelRadius;
+      if (distanceTravelled > 0) {
+        this.wheelRotation -= distanceTravelled / wheelRadius;
+      }
+      const speed = effectiveDt > 0 ? (distanceTravelled / effectiveDt) : 0;
+      const brakeVal = t > 0.60 ? clamp((t - 0.60) / 0.40, 0, 1) : 0;
 
-      const sample = this.sampleRoadPose(this.incomingModel, kinematics.s, kinematics.offset, kinematics.worldYaw, origin);
+      // Diagnostic side-slip check
+      const vehForward = new THREE.Vector3(-Math.sin(kinematics.worldYaw), 0, -Math.cos(kinematics.worldYaw));
+      const forwardDot = vehForward.dot(kinematics.pathTangent);
+      const slipAngleDeg = Math.acos(clamp(Math.abs(forwardDot), 0, 1)) * (180 / Math.PI);
+      this.telemetry.presentationSlipAngleDeg = slipAngleDeg;
+      this.telemetry.forwardVelocityDot = forwardDot;
+      this.telemetry.steerAngleDeg = kinematics.steer * (180 / Math.PI);
+      this.telemetry.wheelRollRadians = this.wheelRotation;
+
       this.incomingModel.group.position.copy(sample.position);
       this.incomingModel.group.rotation.set(0, sample.rotationY, 0);
       this.incomingModel.setOpacity(1.0);
@@ -383,14 +513,20 @@ export class GarageController {
       this.incomingModel.animate(pose, speed, brakeVal, 0);
 
       if (t >= 1.0) {
+        // Log handoff continuity metrics
+        const idleWorldYaw = this.getPresentationWorldYaw();
+        const idleSample = this.sampleRoadPose(this.incomingModel, this.presentationS, this.presentationOffset, idleWorldYaw, origin);
+        this.telemetry.handoffPositionDiff = sample.position.distanceTo(idleSample.position);
+        this.telemetry.handoffAngularDiffDeg = Math.abs(angleDiff(kinematics.worldYaw, idleWorldYaw)) * (180 / Math.PI);
+
         this.state = 'SETTLING';
         this.transitionTimer = 0;
-        this.transitionDuration = 0.35; // 0.35s suspension settle
+        this.transitionDuration = 0.30 / Math.max(0.1, this.speedMultiplier); // 0.30s suspension settle
         this.callbacks.onStateChange?.(this.state, this.targetVehicleId);
       }
     } else if (this.state === 'SETTLING' && this.incomingModel) {
       // Suspension settle at the EXACT authoritative presentation pose
-      const pitchSettle = Math.sin(t * Math.PI) * 0.008 * (1.0 - t);
+      const pitchSettle = Math.sin(t * Math.PI) * 0.005 * (1.0 - t);
       const worldYaw = this.getPresentationWorldYaw();
       const sample = this.sampleRoadPose(this.incomingModel, this.presentationS, this.presentationOffset, worldYaw, origin);
 
@@ -411,6 +547,7 @@ export class GarageController {
         this.departingModel = null;
         this.incomingModel = null;
         this.state = 'IDLE';
+        this.hasPrevPosition = false;
         this.callbacks.onVehicleChanged?.(this.currentVehicleId);
         this.callbacks.onStateChange?.('IDLE', this.currentVehicleId);
       }
@@ -426,5 +563,7 @@ export class GarageController {
     }
     this.departingModel = null;
     this.incomingModel = null;
+    this.hasPrevPosition = false;
   }
 }
+

@@ -112,8 +112,16 @@ export class PlayerVehicleModel {
       this.steer[i].add(mount);
       this.mounts[i] = mount;
       this.wheels[i] = wheels[i]!;
+      if (wheels[i]!.parent !== mount) {
+        mount.add(wheels[i]!);
+      }
       const caliper = mount.getObjectByName('Caliper' + i);
-      if (caliper) this.calipers[i] = caliper;
+      if (caliper) {
+        this.calipers[i] = caliper;
+        if (caliper.parent !== mount) {
+          mount.add(caliper);
+        }
+      }
     }
     this.body.position.y = this.config.centerOfGravity;
     this.ready = true;
