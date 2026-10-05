@@ -19,13 +19,21 @@ Updated 2026-10-05. Read PROJECT_CONTEXT.md first. Base: `156d893bb3449cf66a48f5
 
 No third-party assets added yet. No frozen subsystem modified.
 
+## Completed checkpoint 2
+
+- Shared deterministic multi-scale landscape sampler, graded 12 m shoulder corridor, seeded variable coastline/beach and station apron integration.
+- Terrain grid has 51 columns, denser shoulder sampling and shared analytic finite-difference normals; mesh/collision use Road.terrain.
+- Seven targeted route/terrain/coast/streaming regressions pass; typecheck passes.
+- Files added/changed: `src/road/Landscape.ts`, `src/road/Road.ts`, `src/world/WorldChunk.ts`, `tests/world-foundation.test.ts`.
+- Checkpoint 1 remote commit: `bdf64773cf01b5e73adc027d19e9fb592339e53c`.
+
 ## Exact next implementation step
 
-Implement shared organic terrain/corridor/coast sampling through `Road.terrain`, then replace coarse terrain mesh sampling and preserve identical chunk-edge heights/normals. Test road exclusion, slopes, seams, sea transitions and numerical collision agreement. Follow with curated CC0 assets + WORLD_ASSETS.md, deterministic instanced vegetation/LOD, water shore-depth integration and distant scenery. Keep mainline asphalt dimensions and the existing road API.
+Add terrain material detail and curated CC0 assets + WORLD_ASSETS.md, deterministic instanced vegetation/LOD, water shore-depth integration and distant scenery. Keep mainline asphalt dimensions and the existing road API.
 
 ## Known limits / remaining work
 
-Terrain/trees/beach are still the old prototype at checkpoint 1. New stream generation is bounded by one full chunk per frame, not an asynchronous worker; profile actual build cost before claiming hitch-free. No GPU/FPS claim yet. Existing stations/bridges/city assets were retained, not expanded. Final npm test / typecheck / build and personal daylight/autumn-evening validation remain.
+Trees and water rendering still need integration. Terrain/coast sampling is now updated but the GPU appearance remains unverified. New stream generation is bounded by one full chunk per frame, not an asynchronous worker; profile actual build cost before claiming hitch-free. No GPU/FPS claim yet. Existing stations/bridges/city assets were retained, not expanded. Final npm test / typecheck / build and personal daylight/autumn-evening validation remain.
 
 ## Continue
 

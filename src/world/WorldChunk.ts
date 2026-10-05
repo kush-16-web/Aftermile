@@ -3,6 +3,7 @@ import { CHUNK, Road } from '../road/Road.ts';
 import { rng, smooth } from '../core/math.ts';
 import { Materials } from './Materials.ts';
 import { Batch } from './Batch.ts';
+import { terrainLayers } from '../road/Landscape.ts';
 
 export class WorldChunk {
   group = new THREE.Group();
@@ -379,24 +380,28 @@ export class WorldChunk {
   }
 
   terrain() {
-    this.grid(this.start, this.start + CHUNK, [-1200, -800, -500, -320, -200, -130, -85, -55, -35, -22, -15, -10, -8, 0, 8, 10, 15, 22, 35, 55, 85, 130, 200, 320, 500, 800, 1200], this.m.terrain, (s, o) => this.road.terrain(s, o), true);
+    const side=[0,8,10,12,16,22,30,40,52,66,82,100,122,148,178,214,256,306,364,432,512,608,720,848,1000,1200];
+    this.grid(this.start,this.start+CHUNK,[...side.slice(1).reverse().map(x=>-x),...side],this.m.terrain,(s,o)=>this.road.terrain(s,o),true);
   }
 
   grid(s0: number, s1: number, offsets: number[], material: THREE.Material, height: (s: number, o: number) => number, colored = false, uv = false) {
-    const positions: number[] = [], colors: number[] = [], uvs: number[] = [], indices: number[] = [], rows = Math.ceil((s1 - s0) / 8), n = offsets.length;
-    const grass = new THREE.Color(0x627058), sand = new THREE.Color(0xb8aa88), hill = new THREE.Color(0x767d64), city = new THREE.Color(0x72756d);
+    const positions: number[] = [], colors: number[] = [], normals:number[]=[], uvs: number[] = [], indices: number[] = [], rows = Math.ceil((s1 - s0) / 8), n = offsets.length;
+    const grass = new THREE.Color(0x727b4c), sand = new THREE.Color(0xd1bb91), rock = new THREE.Color(0x88877b), soil = new THREE.Color(0x86765c), wet = new THREE.Color(0x807761), tint=new THREE.Color();
 
     for (let j = 0; j <= rows; j++) {
       for (let i = 0; i < n; i++) {
         const s = s0 + (s1 - s0) * j / rows, o = offsets[i], p = this.road.point(s, o);
-        positions.push(p.x, height(s, o), p.z + this.start);
+        const y=height(s,o);positions.push(p.x,y,p.z+this.start);
         uvs.push(i / (n - 1), j / rows);
 
         if (colored) {
-          const weights = this.road.weights(s), c = grass.clone().lerp(hill, smooth((Math.abs(o) - 25) / 200));
-          c.lerp(sand, Math.max(weights.coast * 0.78, weights.bridge * 0.75)).lerp(city, weights.city * 0.7);
-          c.multiplyScalar(0.94 + 0.07 * Math.sin(s * 0.045 + o * 0.08));
-          colors.push(c.r, c.g, c.b);
+          const along=height(s+.5,o)-height(s-.5,o),across=height(s,o+.5)-height(s,o-.5);
+          const h=this.road.heading(s),sin=Math.sin(h),cos=Math.cos(h);
+          const normal=new THREE.Vector3(-across*cos-along*sin,1,along*cos-across*sin).normalize();
+          normals.push(normal.x,normal.y,normal.z);
+          const layers=terrainLayers(this.road,s,o,y,Math.hypot(along,across));
+          tint.copy(soil).lerp(grass,layers.grass).lerp(rock,layers.rock).lerp(sand,layers.sand).lerp(wet,layers.wet);
+          colors.push(tint.r,tint.g,tint.b);
         }
         if (j < rows && i < n - 1) {
           const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
@@ -410,10 +415,12 @@ export class WorldChunk {
     geo.setIndex(indices);
     if (colored) geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     if (uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-    geo.computeVertexNormals();
+    if(colored)geo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));
+    else geo.computeVertexNormals();
     this.owned.push(geo);
 
     const mesh = new THREE.Mesh(geo, material);
+    if(colored)mesh.name='TerrainSurface';
     mesh.receiveShadow = true;
     this.group.add(mesh);
   }

@@ -1,5 +1,6 @@
 import { hash, lerp, mod, smooth } from '../core/math.ts';
 import { REGION_SPAN, routeProfile } from './RouteProfile.ts';
+import { landscapeHeight, shoreDistance } from './Landscape.ts';
 
 export type Biome = 'coast' | 'country' | 'bridge' | 'city' | 'tunnel' | 'plains';
 export const CHUNK = 160;
@@ -63,18 +64,9 @@ export class Road {
     return curve > 0.025 || grade > 0.0075 || (index % 2 === 0);
   }
   terrain(s: number, offset: number) {
-    const w = this.weights(s), distance = Math.abs(offset);
-    const roadLevel = this.height(s) + offset * this.bank(s);
-    const edge = smooth((distance - 9.8) / 35);
-    const hill = (Math.sin(s * .006 + offset * .008) * 11 + Math.cos(s * .0017 - offset * .013) * 15 + Math.sin(offset * .005 + s * .003) * 22);
-    const naturalTerrain = this.height(s) + (hill + 3) * (1 - w.city * .8);
-    const country = lerp(roadLevel, naturalTerrain, edge);
-    const waterSide = offset < 0 ? w.coast : 0;
-    const depth = Math.max(w.bridge * .95, waterSide);
-    let ground = lerp(country, 6.2 + Math.sin(s * .008) * 0.8, depth * smooth((distance - 12) / 28));
-    if (this.isBridge(s)) ground = lerp(ground, 2.5, smooth((distance - 9.5) / 5.5));
-    return ground;
+    return landscapeHeight(this,s,offset);
   }
+  shoreline(s:number){return shoreDistance(s,this.seed);}
   station(s: number) {
     const cycle = Math.floor((s - 650) / 1600);
     for(let i=cycle; i<=cycle+2; i++) {
