@@ -111,7 +111,14 @@ export const M4_GT3_EVO_Config: VehicleConfig = {
     closeDistance: 5.4,
     closeHeight: 1.88,
     hood: [0, 0.98, -1.45],
-    driver: [-0.355, 0.985, -0.12], // Left-hand drive GT3 race bucket seat position
+    driver: [-0.345, 0.965, 0.165], // Left-hand drive FIA GT3 carbon bucket seating position
+    cockpit: {
+      driverEye: [-0.345, 0.965, 0.165],
+      lookTarget: [-0.345, 0.935, -28.0],
+      fov: 72,
+      near: 0.05,
+      headInertia: { accel: 0.012, brake: 0.018, lateral: 0.014, roll: 0.009 },
+    },
   },
   lights: {
     headlights: [

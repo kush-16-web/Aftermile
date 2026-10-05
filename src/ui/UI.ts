@@ -166,52 +166,123 @@ export function getNavSvg(iconName: string): string {
     case 'turn_right':
     case 'right':
     case '↱':
-      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M10 26V15a5 5 0 0 1 5-5h10"/>
-        <polyline points="18 4 25 10 18 16"/>
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 20V12a4 4 0 0 1 4-4h8"/>
+        <polyline points="16 4 20 8 16 12"/>
       </svg>`;
     case 'turn_left':
     case 'left':
     case '↰':
-      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M22 26V15a5 5 0 0 0-5-5H7"/>
-        <polyline points="14 4 7 10 14 16"/>
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 20V12a4 4 0 0 0-4-4H4"/>
+        <polyline points="8 4 4 8 8 12"/>
       </svg>`;
+    case 'slight_right':
     case 'keep_right':
     case 'fork_right':
     case '↗':
-      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="26" x2="22" y2="8"/>
-        <polyline points="13 7 23 7 22 17"/>
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 19v-6a3 3 0 0 1 2-2.8l7-3.2"/>
+        <polyline points="13 7 18 7 18 12"/>
       </svg>`;
+    case 'slight_left':
     case 'keep_left':
     case 'fork_left':
     case '↖':
-      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="20" y1="26" x2="10" y2="8"/>
-        <polyline points="19 7 9 7 10 17"/>
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M15 19v-6a3 3 0 0 0-2-2.8l-7-3.2"/>
+        <polyline points="11 7 6 7 6 12"/>
+      </svg>`;
+    case 'uturn':
+    case 'u_turn':
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 19V9a5 5 0 0 0-10 0v10"/>
+        <polyline points="4 16 7 19 10 16"/>
+      </svg>`;
+    case 'roundabout':
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"/>
+        <path d="M12 19v-2M17 12h2M12 5v2M5 12h2"/>
+        <polyline points="15 3 18 6 15 9"/>
       </svg>`;
     case 'bridge':
     case '▰':
-      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4 21h24M6 21V14a10 10 0 0 1 20 0v7M11 21v-5M21 21v-5"/>
-        <line x1="16" y1="26" x2="16" y2="9"/>
-        <polyline points="12 13 16 9 20 13"/>
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 17h18M5 17V11a7 7 0 0 1 14 0v6M9 17v-4M15 17v-4"/>
+        <line x1="12" y1="20" x2="12" y2="7"/>
+        <polyline points="9 10 12 7 15 10"/>
       </svg>`;
     case 'tunnel':
     case '▱':
-      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M6 25V14a10 10 0 0 1 20 0v11"/>
-        <line x1="16" y1="26" x2="16" y2="10"/>
-        <polyline points="12 14 16 10 20 14"/>
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 20V11a7 7 0 0 1 14 0v9"/>
+        <line x1="12" y1="20" x2="12" y2="8"/>
+        <polyline points="9 11 12 8 15 11"/>
       </svg>`;
     case 'straight':
     case 'continue':
     case '↑':
     default:
-      return `<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="16" y1="26" x2="16" y2="7"/>
-        <polyline points="9 14 16 6 23 14"/>
+      return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="20" x2="12" y2="5"/>
+        <polyline points="7 10 12 5 17 10"/>
+      </svg>`;
+  }
+}
+
+export function getDoodleSvg(name: string): string {
+  switch (name) {
+    case 'proximity':
+      return `<svg class="assist-doodle-svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2.5" y="8" width="9" height="12" rx="2"/>
+        <line x1="4.5" y1="11" x2="9.5" y2="11"/>
+        <line x1="4.5" y1="17" x2="9.5" y2="17"/>
+        <rect x="16.5" y="8" width="9" height="12" rx="2"/>
+        <line x1="18.5" y1="11" x2="23.5" y2="11"/>
+        <line x1="18.5" y1="17" x2="23.5" y2="17"/>
+        <path d="M14 9v10" stroke="var(--assist-accent-col, #00f0ff)" stroke-dasharray="2 2" stroke-width="1.8"/>
+      </svg>`;
+    case 'offroad':
+      return `<svg class="assist-doodle-svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="4" x2="5" y2="24" stroke-dasharray="3 3"/>
+        <line x1="13" y1="4" x2="13" y2="24"/>
+        <rect x="16.5" y="11" width="8" height="11" rx="1.8"/>
+        <path d="M20.5 8c-2-3-6-2-8.5 0" stroke="var(--assist-accent-col, #00f0ff)" stroke-width="1.5"/>
+        <polyline points="13.5 6 12 8 14.5 9.5" stroke="var(--assist-accent-col, #00f0ff)" stroke-width="1.5"/>
+      </svg>`;
+    case 'recovered':
+      return `<svg class="assist-doodle-svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="4" x2="5" y2="24"/>
+        <line x1="23" y1="4" x2="23" y2="24"/>
+        <line x1="14" y1="4" x2="14" y2="24" stroke-dasharray="2 3" stroke-width="1.1"/>
+        <rect x="10" y="8.5" width="8" height="11" rx="1.8"/>
+        <polyline points="17 4 19.5 6.5 24 2" stroke="var(--assist-accent-col, #00f0ff)" stroke-width="1.8"/>
+      </svg>`;
+    case 'wrongway':
+      return `<svg class="assist-doodle-svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="9" width="8" height="11" rx="1.8"/>
+        <line x1="5.5" y1="12" x2="10.5" y2="12"/>
+        <path d="M15 20V9a4.5 4.5 0 0 1 9 0v6" stroke="var(--assist-accent-col, #00f0ff)" stroke-width="1.6"/>
+        <polyline points="21.5 13 24 16 26.5 13" stroke="var(--assist-accent-col, #00f0ff)" stroke-width="1.6"/>
+      </svg>`;
+    case 'sharpbend':
+      return `<svg class="assist-doodle-svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 23c0-10 7-17 17-17" stroke-width="2"/>
+        <path d="M10 23c0-7 5-12 12-12" stroke-dasharray="2 2" stroke-width="1.1"/>
+        <rect x="15" y="4" width="7" height="10" rx="1.5" transform="rotate(45 18.5 9)"/>
+      </svg>`;
+    case 'slippery':
+      return `<svg class="assist-doodle-svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 19c3 1.5 6-1.5 9 0s6 1.5 9 0" stroke="var(--assist-accent-col, #00f0ff)" stroke-width="1.4"/>
+        <path d="M4 23c3 1.5 6-1.5 9 0s6 1.5 9 0" stroke="var(--assist-accent-col, #00f0ff)" stroke-width="1.4"/>
+        <rect x="10" y="6" width="8" height="11" rx="1.8" transform="rotate(12 14 11.5)"/>
+      </svg>`;
+    case 'fuel':
+    default:
+      return `<svg class="assist-doodle-svg" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5" y="6" width="11" height="16" rx="2"/>
+        <line x1="5" y1="12" x2="16" y2="12"/>
+        <path d="M16 9h3a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-1"/>
       </svg>`;
   }
 }
@@ -291,6 +362,10 @@ export interface HudState {
   navEvent?: string;
   activeManeuver?: NavigationManeuver;
   nearbyPois?: NearbyPoi[];
+  isOffRoad?: boolean;
+  isWrongWay?: boolean;
+  sharpBend?: boolean;
+  routeRecovered?: boolean;
 }
 
 export class UI {
@@ -302,6 +377,10 @@ export class UI {
   companionCanvas: HTMLCanvasElement | null = null;
   lastToast = '';
   toastTimer = 0;
+  private currentAssistType = '';
+  private assistPriority = 999;
+  private assistTimer = 0;
+  private wasOffRoad = false;
   cameraToastTimer = 0;
   assistMessageTimer = 0;
   lastAssistMessage = '';
@@ -365,29 +444,29 @@ export class UI {
 
       <!-- Minimalist Automotive Driving HUD -->
       <section id="hud" class="hud hidden" aria-label="Driving instruments">
-        <!-- TOP-LEFT INTEGRATED MINI ROUTE / MINIMAP -->
+        <!-- TOP-LEFT INTEGRATED MINI ROUTE / MINIMAP (RESTORED APPROVED BASELINE) -->
         <div class="hud-minimap-container" id="hud-minimap" aria-label="Navigation Mini Route">
           <div class="minimap-location-tag" id="minimap-region-name">CRESCENT BAY</div>
           <svg class="minimap-field-svg" id="minimap-svg" viewBox="0 0 180 180" preserveAspectRatio="xMidYMid meet">
             <defs>
-              <!-- Sleek Radar Dial Background Gradient -->
+              <!-- Sleek Radar Dial Background Gradient (Adaptive Day/Night) -->
               <radialGradient id="radarGlassGrad" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stop-color="#081420" stop-opacity="0.9"/>
-                <stop offset="65%" stop-color="#040a12" stop-opacity="0.95"/>
-                <stop offset="100%" stop-color="#02060b" stop-opacity="0.98"/>
+                <stop offset="0%" stop-color="var(--minimap-glass-0, #081420)" stop-opacity="0.9"/>
+                <stop offset="65%" stop-color="var(--minimap-glass-65, #040a12)" stop-opacity="0.95"/>
+                <stop offset="100%" stop-color="var(--minimap-glass-100, #02060b)" stop-opacity="0.98"/>
               </radialGradient>
               <!-- Radar Sweep / Range Glow -->
               <radialGradient id="radarScanCone" cx="90" cy="135" r="95" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.22"/>
-                <stop offset="45%" stop-color="#00f0ff" stop-opacity="0.08"/>
-                <stop offset="100%" stop-color="#00f0ff" stop-opacity="0"/>
+                <stop offset="0%" stop-color="var(--minimap-cone-color, #00f0ff)" stop-opacity="0.22"/>
+                <stop offset="45%" stop-color="var(--minimap-cone-color, #00f0ff)" stop-opacity="0.08"/>
+                <stop offset="100%" stop-color="var(--minimap-cone-color, #00f0ff)" stop-opacity="0"/>
               </radialGradient>
               <!-- Route Gradient -->
               <linearGradient id="miniRoadGrad" x1="0" y1="1" x2="0" y2="0">
-                <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
-                <stop offset="30%" stop-color="#00f0ff" stop-opacity="0.95"/>
-                <stop offset="75%" stop-color="#00b4d8" stop-opacity="0.8"/>
-                <stop offset="100%" stop-color="#0077b6" stop-opacity="0.35"/>
+                <stop offset="0%" stop-color="var(--route-col-0, #ffffff)" stop-opacity="1"/>
+                <stop offset="30%" stop-color="var(--route-col-30, #00f0ff)" stop-opacity="0.95"/>
+                <stop offset="75%" stop-color="var(--route-col-75, #00b4d8)" stop-opacity="0.8"/>
+                <stop offset="100%" stop-color="var(--route-col-100, #0077b6)" stop-opacity="0.35"/>
               </linearGradient>
               <filter id="miniGlow" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur stdDeviation="1.4" result="blur"/>
@@ -403,8 +482,8 @@ export class UI {
             </defs>
 
             <!-- Outer Radar Bezel / Compass Ring -->
-            <circle cx="90" cy="90" r="82" fill="none" stroke="rgba(136, 190, 196, 0.18)" stroke-width="1.5"/>
-            <circle cx="90" cy="90" r="77" fill="none" stroke="rgba(0, 240, 255, 0.35)" stroke-width="1"/>
+            <circle cx="90" cy="90" r="82" fill="none" stroke="var(--minimap-ring-outer, rgba(136, 190, 196, 0.18))" stroke-width="1.5"/>
+            <circle cx="90" cy="90" r="77" fill="none" stroke="var(--minimap-ring-inner, rgba(0, 240, 255, 0.35))" stroke-width="1"/>
 
             <!-- Radar Disc Content Clustered inside Clip -->
             <g clip-path="url(#radarDiscClip)">
@@ -412,16 +491,16 @@ export class UI {
               <circle cx="90" cy="90" r="76" fill="url(#radarGlassGrad)"/>
 
               <!-- Ambient Geography / Coastal Demarcation underlay -->
-              <path d="M 14 90 Q 50 60 90 85 T 166 80 L 166 166 L 14 166 Z" fill="rgba(8, 26, 42, 0.35)"/>
+              <path d="M 14 90 Q 50 60 90 85 T 166 80 L 166 166 L 14 166 Z" fill="var(--minimap-geo-fill, rgba(8, 26, 42, 0.35))"/>
 
               <!-- Subtle Crosshair & Grid Ticks -->
-              <line x1="90" y1="14" x2="90" y2="166" stroke="rgba(136, 190, 196, 0.08)" stroke-width="1" stroke-dasharray="3 4"/>
-              <line x1="14" y1="90" x2="166" y2="90" stroke="rgba(136, 190, 196, 0.08)" stroke-width="1" stroke-dasharray="3 4"/>
+              <line x1="90" y1="14" x2="90" y2="166" stroke="var(--minimap-grid-stroke, rgba(136, 190, 196, 0.08))" stroke-width="1" stroke-dasharray="3 4"/>
+              <line x1="14" y1="90" x2="166" y2="90" stroke="var(--minimap-grid-stroke, rgba(136, 190, 196, 0.08))" stroke-width="1" stroke-dasharray="3 4"/>
 
               <!-- Range Distance Rings (50m, 120m, 200m) -->
-              <circle cx="90" cy="135" r="38" fill="none" stroke="rgba(0, 240, 255, 0.12)" stroke-width="1" stroke-dasharray="2 3"/>
-              <circle cx="90" cy="135" r="72" fill="none" stroke="rgba(0, 240, 255, 0.08)" stroke-width="1" stroke-dasharray="2 4"/>
-              <circle cx="90" cy="135" r="105" fill="none" stroke="rgba(0, 240, 255, 0.05)" stroke-width="1" stroke-dasharray="2 5"/>
+              <circle cx="90" cy="135" r="38" fill="none" stroke="var(--minimap-range-ring, rgba(0, 240, 255, 0.12))" stroke-width="1" stroke-dasharray="2 3"/>
+              <circle cx="90" cy="135" r="72" fill="none" stroke="var(--minimap-range-ring, rgba(0, 240, 255, 0.08))" stroke-width="1" stroke-dasharray="2 4"/>
+              <circle cx="90" cy="135" r="105" fill="none" stroke="var(--minimap-range-ring, rgba(0, 240, 255, 0.05))" stroke-width="1" stroke-dasharray="2 5"/>
 
               <!-- Forward Radar View Cone -->
               <polygon points="90,135 45,30 135,30" fill="url(#radarScanCone)"/>
@@ -431,7 +510,7 @@ export class UI {
                 <!-- Secondary connected / branching roads -->
                 <g id="minimap-secondary-roads"></g>
                 <!-- Road corridor underlay -->
-                <path id="minimap-road-bg" d="M 90 135 L 90 20" stroke="rgba(0, 240, 255, 0.15)" stroke-width="9" stroke-linecap="round" fill="none"/>
+                <path id="minimap-road-bg" d="M 90 135 L 90 20" stroke="var(--minimap-road-bg, rgba(0, 240, 255, 0.15))" stroke-width="9" stroke-linecap="round" fill="none"/>
                 <!-- Active primary route line -->
                 <path id="minimap-road-path" d="M 90 135 L 90 20" stroke="url(#miniRoadGrad)" stroke-width="3.2" stroke-linecap="round" fill="none" filter="url(#miniGlow)"/>
                 <!-- Road Names / Street Labels -->
@@ -443,22 +522,22 @@ export class UI {
               <!-- Player Directional Chevron (Positioned at lower-center 90, 135) -->
               <g id="minimap-player-marker" transform="translate(90, 135)">
                 <!-- Subtle pulse halo -->
-                <circle cx="0" cy="0" r="8.5" fill="rgba(0, 240, 255, 0.18)"/>
+                <circle cx="0" cy="0" r="8.5" fill="var(--minimap-player-pulse, rgba(0, 240, 255, 0.18))"/>
                 <!-- Player Delta Arrow -->
-                <polygon points="0,-8.5 -5,4.5 0,1.8 5,4.5" fill="#ffffff" stroke="#040a12" stroke-width="1.4"/>
-                <circle cx="0" cy="0" r="1.6" fill="#00f0ff"/>
+                <polygon points="0,-8.5 -5,4.5 0,1.8 5,4.5" fill="var(--minimap-player-arrow, #ffffff)" stroke="var(--minimap-player-stroke, #040a12)" stroke-width="1.4"/>
+                <circle cx="0" cy="0" r="1.6" fill="var(--minimap-player-dot, #00f0ff)"/>
               </g>
             </g>
 
             <!-- Outer Compass Cardinal Markers -->
-            <text x="90" y="11" font-size="7.5" font-weight="800" fill="rgba(0, 240, 255, 0.85)" text-anchor="middle" font-family="'Avenir Next', sans-serif">N</text>
-            <text x="169" y="92.5" font-size="6.5" font-weight="700" fill="rgba(136, 190, 196, 0.55)" text-anchor="middle" font-family="'Avenir Next', sans-serif">E</text>
-            <text x="90" y="174" font-size="6.5" font-weight="700" fill="rgba(136, 190, 196, 0.55)" text-anchor="middle" font-family="'Avenir Next', sans-serif">S</text>
-            <text x="11" y="92.5" font-size="6.5" font-weight="700" fill="rgba(136, 190, 196, 0.55)" text-anchor="middle" font-family="'Avenir Next', sans-serif">W</text>
+            <text x="90" y="11" font-size="7.5" font-weight="800" fill="var(--minimap-cardinal-n, rgba(0, 240, 255, 0.85))" text-anchor="middle" font-family="'Avenir Next', sans-serif">N</text>
+            <text x="169" y="92.5" font-size="6.5" font-weight="700" fill="var(--minimap-cardinal-other, rgba(136, 190, 196, 0.55))" text-anchor="middle" font-family="'Avenir Next', sans-serif">E</text>
+            <text x="90" y="174" font-size="6.5" font-weight="700" fill="var(--minimap-cardinal-other, rgba(136, 190, 196, 0.55))" text-anchor="middle" font-family="'Avenir Next', sans-serif">S</text>
+            <text x="11" y="92.5" font-size="6.5" font-weight="700" fill="var(--minimap-cardinal-other, rgba(136, 190, 196, 0.55))" text-anchor="middle" font-family="'Avenir Next', sans-serif">W</text>
           </svg>
         </div>
 
-        <!-- TOP-CENTER VERTICAL NEXT MANEUVER GUIDANCE -->
+        <!-- TOP-CENTER FLOATING MANEUVER GUIDANCE (CINEMATIC MINIMAL HUD) -->
         <div class="hud-maneuver-hud" id="hud-maneuver-badge" aria-label="Next Navigation Maneuver">
           <div class="maneuver-hud-content" id="maneuver-hud-content">
             <div class="maneuver-arrow-hero" id="maneuver-icon">${getNavSvg('straight')}</div>
@@ -496,18 +575,10 @@ export class UI {
           <h2 class="region-entry-title" id="region-entry-title">CRESCENT BAY</h2>
         </div>
 
-        <!-- Road Assist Notification (Originating from Right Edge of Viewport) -->
-        <div class="hud-road-assist hidden" id="assist-card" aria-label="Road Assist warning">
-          <div class="assist-accent-bar"></div>
-          <div class="assist-body">
-            <div class="assist-eyebrow">
-              <svg class="assist-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 2.2l5.8 10.3H2.2L8 2.2zM8 5.8v3.2M8 11.2v.3"/>
-              </svg>
-              <span>ROAD ASSIST</span>
-            </div>
-            <p class="assist-msg" id="suit-message">SLIPPERY ROAD · BRAKE EARLY</p>
-          </div>
+        <!-- Contextual Micro-Doodle Road Assist (Top-Right HUD Zone) -->
+        <div class="hud-road-assist hidden" id="assist-card" aria-label="Road Assist notification">
+          <div class="assist-doodle-icon" id="assist-doodle-icon">${getDoodleSvg('proximity')}</div>
+          <span class="assist-msg" id="suit-message">VEHICLE CLOSE</span>
         </div>
 
         <div id="refuel-prompt" class="refuel-prompt hidden">
@@ -534,7 +605,6 @@ export class UI {
         </div>
       </section>
 
-      <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
       <div id="fps" class="fps hidden"></div>
     `;
 
@@ -545,8 +615,8 @@ export class UI {
       'minimap-secondary-roads', 'minimap-road-labels', 'minimap-poi-group', 'minimap-player-marker',
       'hud-maneuver-badge', 'maneuver-hud-content', 'maneuver-icon', 'maneuver-action', 'maneuver-dist', 'maneuver-location',
       'camera-name', 'camera-mode-badge', 'camera-mode-text', 'region-entry-banner', 'region-entry-title',
-      'suit-message', 'assist-card', 'refuel-prompt', 'refuel-text', 'fuel-warning', 'fps', 'sense',
-      'toast', 'drive-help', 'overlay-layer', 'overlay-viewport', 'nav-active-bar', 'top-nav', 'pause-screen', 'pause-trip', 'pause-resume-btn'
+      'suit-message', 'assist-card', 'assist-doodle-icon', 'refuel-prompt', 'refuel-text', 'fuel-warning', 'fps', 'sense',
+      'drive-help', 'overlay-layer', 'overlay-viewport', 'nav-active-bar', 'top-nav', 'pause-screen', 'pause-trip', 'pause-resume-btn'
     ];
     ids.forEach(id => {
       const el = document.getElementById(id);
@@ -1259,6 +1329,84 @@ export class UI {
     }
   }
 
+  toast(_msg: string) {
+    // Center screen toast pill is completely removed per spec. Road Assist is the sole contextual feedback area.
+  }
+
+  updateAdaptiveTheme(hour: number) {
+    const hud = document.getElementById('hud');
+    if (!hud) return;
+
+    const h = ((hour % 24) + 24) % 24;
+    let themeT = 0; // 0 = daylight, 1 = night
+    if (h >= 8.0 && h <= 16.5) {
+      themeT = 0; // Full day
+    } else if (h > 16.5 && h < 20.5) {
+      themeT = (h - 16.5) / 4.0; // Sunset -> Evening
+    } else if (h >= 20.5 || h <= 5.0) {
+      themeT = 1.0; // Night
+    } else {
+      themeT = 1.0 - (h - 5.0) / 3.0; // Dawn -> Morning
+    }
+
+    const sT = themeT * themeT * (3 - 2 * themeT);
+
+    const lerpRGB = (c1: number[], c2: number[], t: number) => {
+      const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+      const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+      const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+      return `rgb(${r}, ${g}, ${b})`;
+    };
+    const lerpRGBA = (c1: number[], c2: number[], a1: number, a2: number, t: number) => {
+      const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+      const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+      const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+      const a = (a1 + (a2 - a1) * t).toFixed(2);
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    };
+
+    // 1. Radar Glass Dial Stops
+    hud.style.setProperty('--minimap-glass-0', lerpRGBA([238, 243, 247], [8, 20, 32], 0.92, 0.90, sT));
+    hud.style.setProperty('--minimap-glass-65', lerpRGBA([223, 232, 238], [4, 10, 18], 0.94, 0.95, sT));
+    hud.style.setProperty('--minimap-glass-100', lerpRGBA([208, 220, 228], [2, 6, 11], 0.97, 0.98, sT));
+
+    // 2. Outer Bezel & Compass Rings
+    hud.style.setProperty('--minimap-ring-outer', lerpRGBA([70, 100, 120], [136, 190, 196], 0.35, 0.18, sT));
+    hud.style.setProperty('--minimap-ring-inner', lerpRGBA([0, 140, 160], [0, 240, 255], 0.45, 0.35, sT));
+    hud.style.setProperty('--minimap-cardinal-n', lerpRGBA([0, 120, 136], [0, 240, 255], 0.95, 0.85, sT));
+    hud.style.setProperty('--minimap-cardinal-other', lerpRGBA([60, 85, 105], [136, 190, 196], 0.75, 0.55, sT));
+
+    // 3. Ambient Geography & Grid
+    hud.style.setProperty('--minimap-geo-fill', lerpRGBA([190, 205, 215], [8, 26, 42], 0.60, 0.35, sT));
+    hud.style.setProperty('--minimap-grid-stroke', lerpRGBA([70, 100, 120], [136, 190, 196], 0.15, 0.08, sT));
+    hud.style.setProperty('--minimap-range-ring', lerpRGBA([0, 120, 140], [0, 240, 255], 0.20, 0.12, sT));
+    hud.style.setProperty('--minimap-cone-color', lerpRGBA([0, 150, 170], [0, 240, 255], 0.25, 0.22, sT));
+
+    // 4. Roads & Active Route
+    hud.style.setProperty('--minimap-road-bg', lerpRGBA([165, 185, 198], [0, 240, 255], 0.80, 0.15, sT));
+    hud.style.setProperty('--minimap-sec-road', lerpRGBA([130, 150, 165], [145, 195, 215], 0.65, 0.28, sT));
+    hud.style.setProperty('--route-col-0', lerpRGBA([0, 72, 89], [255, 255, 255], 1.0, 1.0, sT));
+    hud.style.setProperty('--route-col-30', lerpRGBA([0, 119, 140], [0, 240, 255], 1.0, 0.95, sT));
+    hud.style.setProperty('--route-col-75', lerpRGBA([0, 168, 194], [0, 180, 216], 0.9, 0.80, sT));
+    hud.style.setProperty('--route-col-100', lerpRGBA([0, 204, 230], [0, 119, 182], 0.5, 0.35, sT));
+
+    // 5. Player Marker
+    hud.style.setProperty('--minimap-player-arrow', '#ffffff');
+    hud.style.setProperty('--minimap-player-stroke', lerpRGB([24, 42, 56], [4, 10, 18], sT));
+    hud.style.setProperty('--minimap-player-dot', lerpRGB([0, 143, 163], [0, 240, 255], sT));
+    hud.style.setProperty('--minimap-player-pulse', lerpRGBA([0, 140, 160], [0, 240, 255], 0.25, 0.18, sT));
+
+    // 6. Location Tag
+    hud.style.setProperty('--minimap-tag-bg', lerpRGBA([235, 242, 248], [6, 14, 22], 0.90, 0.70, sT));
+    hud.style.setProperty('--minimap-tag-color', lerpRGB([20, 40, 54], [226, 244, 248], sT));
+    hud.style.setProperty('--minimap-tag-border', lerpRGB([0, 143, 163], [0, 240, 255], sT));
+
+    // 7. Road Assist Theme
+    hud.style.setProperty('--assist-accent-col', lerpRGB([0, 155, 176], [0, 240, 255], sT));
+    hud.style.setProperty('--assist-glow-col', lerpRGBA([0, 155, 176], [0, 240, 255], 0.3, 0.4, sT));
+    hud.style.setProperty('--assist-text-col', '#ffffff');
+  }
+
   update(state: HudState, dt = 0.016) {
     this.updateHud(state, dt);
   }
@@ -1271,6 +1419,9 @@ export class UI {
     const distFactor = isMetric ? 1000 : 1609.34;
     const unit = isMetric ? 'km' : 'mi';
 
+    // Update Adaptive Day/Evening/Night Theme
+    this.updateAdaptiveTheme(state.hour);
+
     // In Cockpit / FPP camera mode (camera index 3), hide external HUD to make the car interior the dashboard!
     const isCockpit = state.camera === 3;
     if (e['hud-minimap']) e['hud-minimap'].classList.toggle('hidden', isCockpit);
@@ -1279,13 +1430,17 @@ export class UI {
     if (e['drive-help']) e['drive-help'].classList.toggle('hidden', isCockpit);
     if (e['assist-card']) e['assist-card'].classList.toggle('hidden', isCockpit);
 
-    // Top-Center Maneuver HUD (Dedicated exclusively to navigation)
+    // Top-Center Maneuver HUD (Dedicated exclusively to floating cinematic navigation)
     const maneuverBadge = e['hud-maneuver-badge'];
     const maneuverContent = e['maneuver-hud-content'];
     if (maneuverBadge) {
       if (state.activeManeuver) {
         maneuverBadge.classList.remove('hidden');
-        maneuverBadge.classList.toggle('restrained', Boolean(state.activeManeuver.isFar));
+        const distM = state.activeManeuver.distance;
+        const isFar = Boolean(state.activeManeuver.isFar || distM > 300);
+        const isClose = distM <= 60;
+        maneuverBadge.classList.toggle('restrained', isFar);
+        maneuverBadge.classList.toggle('close-approach', isClose);
 
         const targetIcon = state.activeManeuver.icon || 'straight';
         const targetAction = state.activeManeuver.action || 'CONTINUE';
@@ -1311,8 +1466,16 @@ export class UI {
         }
 
         if (e['maneuver-dist']) {
-          const distM = state.activeManeuver.distance;
-          const distFormatted = distM >= 1000 ? `${(distM / 1000).toFixed(1)} ${unit}` : `${Math.round(distM)} m`;
+          let distFormatted = '';
+          if (distM >= 1000) {
+            distFormatted = `${(distM / 1000).toFixed(1)} ${unit}`;
+          } else if (distM >= 100) {
+            // Stable 10m intervals for 100-990m to eliminate rapid single-meter jitter
+            distFormatted = `${Math.round(distM / 10) * 10} m`;
+          } else {
+            // Under 100m, stable 5m intervals
+            distFormatted = `${Math.max(5, Math.round(distM / 5) * 5)} m`;
+          }
           e['maneuver-dist'].textContent = distFormatted;
         }
       } else {
@@ -1370,7 +1533,7 @@ export class UI {
     const minutes = Math.floor((state.hour - hour) * 60);
     if (e['weather-time']) e['weather-time'].textContent = `${String(hour).padStart(2, '0')}:${String(minutes).padStart(2, '0')} · ${state.city || 'SIMULATION'}`;
 
-    // 6. Top-Left Integrated Mini Route / Minimap Rendering
+    // 6. Top-Left Integrated Mini Route / Minimap Rendering (Restored Approved Baseline)
     if (e['minimap-road-path'] && state.navCurve && state.navCurve.length >= 3) {
       const pts = state.navCurve;
       // Heading-up transformation with player chevron at lower-center (90, 135)
@@ -1410,7 +1573,7 @@ export class UI {
                 if (j === 0) dSec += `M ${sx.toFixed(1)} ${sy.toFixed(1)}`;
                 else dSec += ` L ${sx.toFixed(1)} ${sy.toFixed(1)}`;
               }
-              secMarkup += `<path d="${dSec}" stroke="rgba(145, 195, 215, 0.28)" stroke-width="1.8" stroke-linecap="round" fill="none"/>`;
+              secMarkup += `<path d="${dSec}" stroke="var(--minimap-sec-road, rgba(145, 195, 215, 0.28))" stroke-width="1.8" stroke-linecap="round" fill="none"/>`;
             }
           }
         }
@@ -1426,14 +1589,14 @@ export class UI {
             const ly = 135 - (lbl.y / 350) * 115;
             if (ly > 25 && ly < 155) {
               const rot = lbl.angle ? `transform="rotate(${lbl.angle.toFixed(0)}, ${lx.toFixed(1)}, ${ly.toFixed(1)})"` : '';
-              lblMarkup += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="6.8" font-weight="700" letter-spacing="0.14em" fill="rgba(215, 238, 248, 0.65)" text-anchor="middle" font-family="'Avenir Next', sans-serif" ${rot}>${lbl.text}</text>`;
+              lblMarkup += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="6.8" font-weight="700" letter-spacing="0.14em" fill="var(--minimap-tag-color, rgba(215, 238, 248, 0.65))" text-anchor="middle" font-family="'Avenir Next', sans-serif" ${rot}>${lbl.text}</text>`;
             }
           }
         }
         e['minimap-road-labels'].innerHTML = lblMarkup;
       }
 
-      // Real World POI Icons on Minimap (Original Vector Glyphs, NO EMOJI)
+      // Real World POI Icons on Minimap
       if (e['minimap-poi-group']) {
         let poiMarkup = '';
         if (state.nearbyPois && state.nearbyPois.length > 0) {
@@ -1456,46 +1619,92 @@ export class UI {
       }
     }
 
-    // 7. Road Assist Alerts (Originates from Right Viewport Edge)
-    let message = '';
-    let isUrgent = false;
+    // 7. Contextual Road Assist Micro-Doodle System (Top-Right HUD Zone)
+    let targetType = '';
+    let targetMsg = '';
+    let priority = 999;
+    let isPersistent = false;
 
     if (state.danger > 0.25) {
-      message = 'PROXIMITY ALERT · VEHICLE NEARBY';
-      isUrgent = true;
+      targetType = 'proximity';
+      targetMsg = 'VEHICLE CLOSE';
+      priority = 1;
+      isPersistent = true;
+    } else if (state.isWrongWay) {
+      targetType = 'wrongway';
+      targetMsg = 'WRONG WAY';
+      priority = 2;
+      isPersistent = true;
+    } else if (state.isOffRoad) {
+      targetType = 'offroad';
+      targetMsg = 'BACK TO ROAD';
+      priority = 3;
+      isPersistent = true;
+    } else if (state.sharpBend) {
+      targetType = 'sharpbend';
+      targetMsg = 'SHARP BEND';
+      priority = 4;
+      isPersistent = false;
+    } else if (state.routeRecovered) {
+      targetType = 'recovered';
+      targetMsg = 'ROUTE FOUND';
+      priority = 5;
+      isPersistent = false;
     } else if (state.refueling) {
-      message = state.fuel >= 99 ? 'TANKS FULL · READY TO ROLL' : 'REFUELING IN PROGRESS...';
-      isUrgent = true;
-    } else if (state.fuel < 20 && !state.zen && d.fuel) {
-      message = `LOW FUEL · HORIZON STATION ${Math.max(0, state.nextStation / distFactor).toFixed(1)} ${unit}`;
-      isUrgent = true;
+      targetType = 'fuel';
+      targetMsg = state.fuel >= 99 ? 'TANKS FULL' : 'REFUELING';
+      priority = 6;
+      isPersistent = true;
     } else if (state.condition === 'storm' || state.condition === 'heavy') {
-      message = 'SLIPPERY ROAD · BRAKE EARLY';
-      isUrgent = true;
+      targetType = 'slippery';
+      targetMsg = 'SLIPPERY ROAD';
+      priority = 7;
+      isPersistent = false;
     } else if (state.condition === 'snow') {
-      message = 'ICY SURFACE · EASY ON STEERING';
-      isUrgent = true;
-    } else if (state.nextStation < 280 && state.nextStation > 40) {
-      message = 'HORIZON FUEL & REST · APPROACHING ON RIGHT';
-      isUrgent = false;
+      targetType = 'slippery';
+      targetMsg = 'ICY SURFACE';
+      priority = 7;
+      isPersistent = false;
+    } else if (state.fuel < 20 && !state.zen && d.fuel) {
+      targetType = 'fuel';
+      targetMsg = 'LOW FUEL';
+      priority = 8;
+      isPersistent = false;
     }
 
     const assistCard = e['assist-card'];
-    if (assistCard) {
-      if (d.assistant && message) {
-        if (message !== this.lastAssistMessage) {
-          this.lastAssistMessage = message;
-          this.assistMessageTimer = isUrgent ? 7.0 : 4.5;
+    const assistDoodle = e['assist-doodle-icon'];
+    const assistMsg = e['suit-message'];
+
+    if (assistCard && d.assistant) {
+      if (targetType) {
+        if (priority <= this.assistPriority || this.assistTimer <= 0) {
+          if (targetType !== this.currentAssistType || targetMsg !== this.lastAssistMessage) {
+            this.currentAssistType = targetType;
+            this.lastAssistMessage = targetMsg;
+            this.assistPriority = priority;
+            if (assistDoodle) assistDoodle.innerHTML = getDoodleSvg(targetType);
+            if (assistMsg) assistMsg.textContent = targetMsg;
+            assistCard.classList.remove('hidden');
+            assistCard.classList.remove('faded');
+          }
+          this.assistTimer = isPersistent ? 1.0 : (priority === 5 ? 2.5 : 4.0);
         }
-        if (e['suit-message']) e['suit-message'].textContent = message;
-        assistCard.classList.remove('hidden');
-        assistCard.classList.remove('faded');
-      } else {
-        this.assistMessageTimer -= dt;
-        if (this.assistMessageTimer <= 0) {
+      }
+
+      if (this.assistTimer > 0) {
+        this.assistTimer -= dt;
+        if (this.assistTimer <= 0 && !targetType) {
           assistCard.classList.add('faded');
           assistCard.classList.add('hidden');
+          this.currentAssistType = '';
+          this.assistPriority = 999;
         }
+      } else if (!targetType) {
+        assistCard.classList.add('faded');
+        assistCard.classList.add('hidden');
+        this.currentAssistType = '';
+        this.assistPriority = 999;
       }
     }
 
@@ -1517,17 +1726,7 @@ export class UI {
     }
     if (e.sense) e.sense.style.opacity = String(state.danger * d.sense * 0.75);
 
-    this.toastTimer -= dt;
-    if (this.toastTimer <= 0 && e.toast) e.toast.classList.add('hidden');
     const pauseTrip = document.getElementById('pause-trip');
     if (pauseTrip) pauseTrip.textContent = `${(state.distance / distFactor).toFixed(1)} ${unit} through ${state.region}.`;
-  }
-
-  toast(message: string) {
-    if (this.elements.toast) {
-      this.elements.toast.textContent = message;
-      this.elements.toast.classList.remove('hidden');
-      this.toastTimer = 3.5;
-    }
   }
 }

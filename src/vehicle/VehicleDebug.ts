@@ -11,6 +11,8 @@ export class VehicleDebug {
   private fields: { input: HTMLInputElement; path: string }[] = [];
   private defaults: VehicleConfig;
 
+  private navTelemetry = document.createElement('pre');
+
   constructor(
     private vehicle: VehicleController,
     private resetCamera: () => void,
@@ -24,7 +26,7 @@ export class VehicleDebug {
 
     const title = document.createElement('strong');
     title.style.cssText = 'color:#50e3c2;font-size:13px;display:block;margin-bottom:8px';
-    title.textContent = 'VEHICLE & AUDIO DEV INSPECTOR · F2';
+    title.textContent = 'VEHICLE, AUDIO & NAV DEV INSPECTOR · F2';
 
     // Global dev window hook for testing
     if (typeof window !== 'undefined') {
@@ -46,7 +48,7 @@ export class VehicleDebug {
     this.audioControlsContainer.style.cssText = 'margin:10px 0;padding:8px;background:#151e29;border-radius:6px;border:1px solid #283a4c';
     this.buildAudioButtons();
 
-    this.panel.append(title, this.telemetry, this.audioTelemetry, this.audioControlsContainer);
+    this.panel.append(title, this.telemetry, this.navTelemetry, this.audioTelemetry, this.audioControlsContainer);
 
     const speedLabel = document.createElement('label');
     speedLabel.textContent = 'Test speed (km/h) ';
@@ -258,13 +260,17 @@ export class VehicleDebug {
     this.panel.hidden = !this.panel.hidden;
   }
 
-  update() {
+  update(fps = 60, dt = 0.016, cameraMode = 'Chase', accumulatorAlpha = 0, navDebug?: { currentRoad?: string; nextRoad?: string; maneuverType?: string; distance?: number; routeProgress?: number; routeSegment?: string }) {
     if (this.panel.hidden) return;
     const p = this.vehicle.physics,
       deg = 180 / Math.PI;
 
     this.telemetry.textContent = [
-      `=== DYNAMICS: [ ${p.dynamicState} ] ===`,
+      `=== TIMING & PERFORMANCE ===`,
+      `FPS / Frame ${(fps).toFixed(1)} FPS | ${(dt * 1000).toFixed(1)} ms`,
+      `Camera Mode ${cameraMode}`,
+      `Render Alpha ${(accumulatorAlpha * 100).toFixed(1)}%`,
+      `\n=== DYNAMICS: [ ${p.dynamicState} ] ===`,
       `Vehicle     ${this.vehicle.config.name}`,
       `Speed       ${(p.speed * 3.6).toFixed(1)} km/h (${p.speed.toFixed(2)} m/s)`,
       `RPM / gear  ${Math.round(p.rpm)} / ${p.speed < -0.1 ? 'R' : p.gear}`,
@@ -272,6 +278,18 @@ export class VehicleDebug {
       `TC Cut/ABS  ${(p.tcCut * 100).toFixed(0)}% / ${p.absActive ? 'ACTIVE' : 'OFF'}`,
       `Slip / Angle ${(p.slip * 100).toFixed(1)}% / ${(p.wheelsTelemetry[2]?.slipAngle * deg || 0).toFixed(1)}°`,
     ].join('\n');
+
+    if (navDebug) {
+      this.navTelemetry.textContent = [
+        `\n=== NAVIGATION ROUTE TRUTH ===`,
+        `Current Road:   ${navDebug.currentRoad || 'NONE'}`,
+        `Next Road:      ${navDebug.nextRoad || 'NONE'}`,
+        `Maneuver:       ${navDebug.maneuverType || 'CONTINUE'} (${navDebug.distance ?? 0} m)`,
+        `Route Progress: ${((navDebug.routeProgress ?? 0) * 100).toFixed(1)}% [${navDebug.routeSegment || 'Active'}]`,
+      ].join('\n');
+    } else {
+      this.navTelemetry.textContent = '';
+    }
 
     const audio = this.getAudio?.();
     if (audio?.vehicle) {

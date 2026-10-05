@@ -87,6 +87,25 @@ export interface VehicleDisplaySpecs {
   };
 }
 
+export interface CockpitCameraConfig {
+  driverEye: Vec3;
+  lookTarget: Vec3;
+  fov: number;
+  near: number;
+  headInertia?: { accel: number; brake: number; lateral: number; roll: number };
+}
+
+export interface CameraConfig {
+  distance: number;
+  height: number;
+  lookAhead: number;
+  closeDistance: number;
+  closeHeight: number;
+  hood: Vec3;
+  driver: Vec3;
+  cockpit?: CockpitCameraConfig;
+}
+
 /** Metres, kilograms, seconds, newtons and radians unless a field names its unit.
  * Model contract: Body; WheelMount0..3 containing Wheel0..3 and Caliper0..3.
  * Vehicle origin is the axle midpoint at road height; model forward is -Z.
@@ -107,7 +126,7 @@ export interface VehicleConfig {
   brakes: { force: number; frontBias: number; handbrakeForce: number; reverseDelay: number };
   suspension: { stiffness: number; damping: number; rollStiffness: number; pitchStiffness: number; travel: number };
   dragArea: number; rollingResistance: number;
-  camera: { distance: number; height: number; lookAhead: number; closeDistance: number; closeHeight: number; hood: Vec3; driver: Vec3 };
+  camera: CameraConfig;
   lights: {
     headlights: Vec3[]; intensity: number; range: number;
     materials: { head: string[]; tail: string[]; brake: string[]; reverse: string[] };

@@ -937,7 +937,7 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
 }
 
 /* =========================================================================
-   4. TOP-LEFT MINI ROUTE / MINIMAP (Integrated HUD Field)
+   4. TOP-LEFT MINI ROUTE / MINIMAP (Restored Approved Baseline with Adaptive Theme)
    ========================================================================= */
 .hud-minimap-container {
   position: absolute;
@@ -947,7 +947,8 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
   height: 200px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: flex-start;
   pointer-events: none;
   z-index: 30;
   transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -959,42 +960,35 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
 }
 
 .minimap-location-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: .22em;
-  color: #e2f4f8;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: var(--minimap-tag-color, #e2f4f8);
+  background: var(--minimap-tag-bg, rgba(6, 14, 22, 0.7));
+  border: 1px solid var(--minimap-tag-border, rgba(0, 240, 255, 0.4));
+  padding: 3px 10px;
+  border-radius: 10px;
+  margin-bottom: 6px;
   text-transform: uppercase;
-  padding: 3px 8px 3px 6px;
-  background: rgba(6, 14, 22, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-left: 2.5px solid var(--cyan-bright, #00f0ff);
-  border-radius: 0 4px 4px 0;
-  margin-bottom: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 180px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: color 0.3s ease, background 0.3s ease, border-color 0.3s ease;
 }
 
 .minimap-field-svg {
   width: 180px;
   height: 180px;
   overflow: visible;
-  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.75));
+  filter: drop-shadow(0 4px 16px rgba(0, 0, 0, 0.65));
 }
 
 /* =========================================================================
-   5. TOP-CENTER NEXT MANEUVER GUIDANCE (Vertical Driving HUD)
+   5. TOP-CENTER FLOATING NEXT MANEUVER GUIDANCE (Cinematic Driving HUD)
    ========================================================================= */
 .hud-maneuver-hud {
   position: absolute;
-  top: 24px;
+  top: 26px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -1002,16 +996,23 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
   justify-content: center;
   pointer-events: none;
   z-index: 30;
-  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .hud-maneuver-hud.hidden {
   opacity: 0;
-  transform: translate(-50%, -15px);
+  transform: translate(-50%, -12px);
   pointer-events: none;
 }
 .hud-maneuver-hud.restrained {
-  opacity: 0.55;
-  transform: translate(-50%, 0) scale(0.94);
+  opacity: 0.72;
+  transform: translate(-50%, 0) scale(0.96);
+}
+.hud-maneuver-hud.close-approach .maneuver-arrow-hero {
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 14px rgba(0, 240, 255, 0.6));
+}
+.hud-maneuver-hud.close-approach .maneuver-action-text {
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95), 0 0 16px rgba(0, 240, 255, 0.4);
 }
 
 .maneuver-hud-content {
@@ -1019,22 +1020,20 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 2px;
-  padding: 10px 24px 12px;
-  background: linear-gradient(180deg, rgba(8, 18, 30, 0.82) 0%, rgba(4, 10, 18, 0.94) 100%);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border: 1px solid rgba(136, 190, 196, 0.28);
-  border-top: 1.5px solid rgba(165, 230, 238, 0.7);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 240, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95);
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
-  min-width: 136px;
+  gap: 1px;
+  padding: 0;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  box-shadow: none;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95), 0 0 16px rgba(0, 0, 0, 0.85);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  min-width: 140px;
 }
 .maneuver-hud-content.maneuver-transition-out {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-6px);
 }
 .maneuver-hud-content.maneuver-transition-in {
   opacity: 1;
@@ -1042,13 +1041,14 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
 }
 
 .maneuver-arrow-hero {
-  width: 36px;
-  height: 36px;
-  color: var(--cyan-bright, #00f0ff);
-  filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.85));
+  width: 32px;
+  height: 32px;
+  color: #f0f8fc;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 10px rgba(0, 240, 255, 0.35));
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-bottom: 2px;
 }
 .maneuver-arrow-hero svg {
   width: 100%;
@@ -1057,31 +1057,35 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
 
 .maneuver-action-text {
   font-size: 13.5px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: .18em;
   color: #ffffff;
   text-transform: uppercase;
-  margin-top: 3px;
+  margin-top: 1px;
   line-height: 1.15;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 12px rgba(0, 0, 0, 0.8);
 }
 
 .maneuver-distance-text {
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 500;
   letter-spacing: .08em;
-  color: #a5e6ee;
+  color: #9fe2ec;
   font-feature-settings: "tnum";
   line-height: 1.15;
+  margin-top: 2px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.8);
 }
 
 .maneuver-destination-text {
   font-size: 9.5px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: .22em;
-  color: rgba(185, 210, 225, 0.82);
+  color: rgba(195, 220, 235, 0.72);
   text-transform: uppercase;
   margin-top: 2px;
   line-height: 1.2;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.8);
 }
 
 /* Controls helper (Bottom Right) */
@@ -1171,65 +1175,74 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
 }
 
-/* Road Assist Notification (Originating from Right Edge of Viewport) */
+/* =========================================================================
+   6. CONTEXTUAL ROAD ASSIST MICRO-DOODLE (Top-Right HUD Zone · No Card/Pill)
+   ========================================================================= */
 .hud-road-assist {
   position: absolute;
-  top: 96px;
-  right: 0;
-  display: flex;
-  align-items: stretch;
-  padding: 8px 24px 8px 28px;
-  background: linear-gradient(to left, rgba(6, 14, 22, 0.9) 0%, rgba(6, 14, 22, 0.6) 75%, rgba(6, 14, 22, 0) 100%);
-  border-right: 3px solid var(--cyan-bright, #00f0ff);
+  top: 26px;
+  right: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: transparent;
   pointer-events: none;
   z-index: 30;
   transform: translateX(0);
   opacity: 1;
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
 }
 .hud-road-assist.hidden,
 .hud-road-assist.faded {
-  transform: translateX(100%);
+  transform: translateX(12px);
   opacity: 0;
   pointer-events: none;
 }
-.assist-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  text-align: right;
-}
-.assist-eyebrow {
+
+.assist-doodle-icon {
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .22em;
-  color: var(--cyan);
+  justify-content: center;
+  color: var(--assist-accent-col, #00f0ff);
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 8px var(--assist-glow-col, rgba(0, 240, 255, 0.4)));
 }
-.assist-glyph {
-  width: 12px;
-  height: 12px;
-  color: var(--cyan-bright, #00f0ff);
+.assist-doodle-svg {
+  width: 100%;
+  height: 100%;
+  animation: doodleDraw 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+@keyframes doodleDraw {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .assist-msg {
   margin: 0;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #ffffff;
-  letter-spacing: .08em;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--assist-text-col, #ffffff);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.8);
 }
 
 /* Responsive HUD Adaptations */
 @media (max-width: 1440px) {
   .hud-minimap-container {
     top: 20px;
-    left: 28px;
+    left: 24px;
     width: 160px;
-    height: 175px;
+    height: 180px;
   }
   .minimap-field-svg {
     width: 160px;
@@ -1239,23 +1252,27 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
     top: 20px;
   }
   .maneuver-arrow-hero {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
   }
   .maneuver-action-text {
     font-size: 12px;
   }
   .maneuver-distance-text {
-    font-size: 12.5px;
+    font-size: 12px;
+  }
+  .hud-road-assist {
+    top: 20px;
+    right: 24px;
   }
 }
 
 @media (max-width: 1024px) {
   .hud-minimap-container {
     top: 14px;
-    left: 18px;
+    left: 16px;
     width: 140px;
-    height: 155px;
+    height: 160px;
   }
   .minimap-field-svg {
     width: 140px;
@@ -1268,10 +1285,14 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
     bottom: 18px;
     left: 20px;
   }
+  .hud-road-assist {
+    top: 14px;
+    right: 16px;
+  }
 }
 
 /* =========================================================================
-   5. MINIMAL FULL-SCREEN PAUSE SCREEN (Z-INDEX 85)
+   7. MINIMAL FULL-SCREEN PAUSE SCREEN (Z-INDEX 85)
    ========================================================================= */
 .pause-screen {
   position: fixed;
@@ -1359,25 +1380,6 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
   color: rgba(143, 162, 175, 0.6);
 }
 
-/* Toast & FPS */
-.toast {
-  position: absolute;
-  top: 132px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 8px 20px;
-  background: rgba(8, 16, 26, 0.85);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(136, 190, 196, 0.25);
-  border-radius: 20px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: .12em;
-  color: #e2f4f8;
-  z-index: 110;
-}
 .fps {
   position: absolute;
   top: 24px;
@@ -1387,3 +1389,4 @@ button svg { width: 18px; height: 18px; flex-shrink: 0; }
   letter-spacing: .1em;
   color: var(--cyan);
 }
+

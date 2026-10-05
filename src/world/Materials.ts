@@ -35,20 +35,23 @@ export class Materials {
 
   constructor() {
     const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d')!, data = ctx.createImageData(128, 128);
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!, data = ctx.createImageData(256, 256);
     let r = 17;
     for (let i = 0; i < data.data.length; i += 4) {
       r = (r * 1664525 + 1013904223) >>> 0;
-      const n = 150 + (r % 80);
+      // High-frequency asphalt micro-grain with subtle aggregate contrast
+      const grain = (r % 64);
+      const macro = ((r >> 8) % 40);
+      const n = 145 + grain + macro;
       data.data[i] = data.data[i + 1] = data.data[i + 2] = n;
       data.data[i + 3] = 255;
     }
     ctx.putImageData(data, 0, 0);
     const texture = new THREE.CanvasTexture(canvas);
     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(8, 60);
+    texture.repeat.set(12, 120);
     texture.colorSpace = THREE.SRGBColorSpace;
     this.asphalt.map = texture;
 

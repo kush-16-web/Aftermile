@@ -19,6 +19,8 @@ export class PlayerVehicleModel {
   lights: VehicleLights;
   cockpit: CockpitDisplay;
   steeringWheel: THREE.Object3D | null = null;
+  driverEye = new THREE.Object3D();
+  seatMesh: THREE.Mesh | null = null;
   ready = false;
   error = '';
   private pending: Promise<void> | null = null;
@@ -37,6 +39,13 @@ export class PlayerVehicleModel {
     this.surface.add(this.body);
     this.lights = new VehicleLights(config);
     this.cockpit = new CockpitDisplay(config);
+
+    // Dedicated Vehicle-Local DriverEye Socket parented directly to vehicle chassis
+    this.driverEye.name = `${config.id.toUpperCase()}_DriverEye`;
+    const baseEye = config.camera.cockpit?.driverEye || (config.camera.driver as [number, number, number]) || [0.355, 1.050, -0.030];
+    const cg = config.centerOfGravity || 0.48;
+    this.driverEye.position.set(baseEye[0], baseEye[1] - cg, baseEye[2]);
+    this.body.add(this.driverEye);
 
     for (const position of config.wheelPositions) {
       const pivot = new THREE.Group();
@@ -70,7 +79,9 @@ export class PlayerVehicleModel {
       throw new Error('Vehicle asset is missing its body or wheel rig.');
     }
     this.lights.bind(scene, this.config);
+    this.cockpit.bindVehicleScene(scene);
     this.steeringWheel = body.getObjectByName('SteeringWheel') || scene.getObjectByName('SteeringWheel') || null;
+    this.seatMesh = (scene.getObjectByName('Body_24') as THREE.Mesh) || (scene.getObjectByName('seat') as THREE.Mesh) || null;
 
     scene.traverse(o => {
       if (!(o instanceof THREE.Mesh)) return;
@@ -87,6 +98,7 @@ export class PlayerVehicleModel {
       o.receiveShadow = true;
       this.geometries.add(o.geometry);
       for (const material of Array.isArray(o.material) ? o.material : [o.material]) {
+        if (!material) continue;
         this.materials.add(material);
         this.originalOpacity.set(material, ('opacity' in material && typeof (material as any).opacity === 'number') ? (material as any).opacity : 1.0);
         this.originalTransparent.set(material, material.transparent);
@@ -166,10 +178,28 @@ export class PlayerVehicleModel {
     if (this.steeringWheel) {
       this.steeringWheel.rotation.z = -pose.steering * 3.5;
     }
+
+    // Restrained physically motivated driver-eye inertia
+    const baseEye = this.config.camera.cockpit?.driverEye || (this.config.camera.driver as [number, number, number]) || [0.355, 1.050, -0.030];
+    const headInertia = this.config.camera.cockpit?.headInertia || { accel: 0.012, brake: 0.018, lateral: 0.014, roll: 0.009 };
+    // Longitudinal inertia from chassis pitch (acceleration pushback / braking dip)
+    const longInertia = THREE.MathUtils.clamp(pose.pitch * 0.35, -headInertia.brake, headInertia.accel);
+    // Lateral inertia from cornering roll
+    const latInertia = THREE.MathUtils.clamp(-pose.roll * 0.25, -headInertia.lateral, headInertia.lateral);
+
+    this.driverEye.position.set(
+      baseEye[0] + latInertia,
+      baseEye[1] - cg,
+      baseEye[2] + longInertia
+    );
+
     this.lights.update(night, brake, speed, this.config);
   }
 
   setCameraMode(mode: number) {
+    if (this.seatMesh) {
+      this.seatMesh.visible = (mode !== 3);
+    }
     if (this.ready) {
       this.cockpit.setCockpitActive(mode === 3);
     }

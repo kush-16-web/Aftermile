@@ -87,13 +87,9 @@ export class GarageController {
       } else {
         this.presentationOffset = clamp(carOffset, -5.2, -3.2);
       }
-      this.presentationHeading = Math.abs(carHeading) < 0.35 ? 0 : carHeading;
-
-      // Lock heading direction: test if parked car faces +s or -s
-      const diffPos = Math.abs(angleDiff(this.presentationHeading, 0));
-      const diffNeg = Math.abs(angleDiff(this.presentationHeading, Math.PI));
-      this.headingDir = (diffPos <= diffNeg) ? 1 : -1;
-
+      // Authoritative parking presentation is always road-lane aligned
+      this.presentationHeading = 0;
+      this.headingDir = 1;
       this.isFrameLocked = true;
     }
   }
@@ -104,7 +100,7 @@ export class GarageController {
   public getPresentationWorldYaw(): number {
     if (!this.road) return 0;
     const roadHeading = this.road.heading(this.presentationS);
-    return -roadHeading - this.presentationHeading;
+    return -roadHeading;
   }
 
   /**
@@ -184,42 +180,48 @@ export class GarageController {
 
   /**
    * Evaluates the departure path (s, offset) at normalized progress t [0..1].
-   * - Longitudinal: Starts at s0, smoothly accelerates along headingDir.
-   * - Lateral: Strictly offset0 for initial 20% (d(offset)/dt = 0 at t=0), then smoothly shifts.
-   * => Guaranteed exit start tangent matches parked forward orientation with 0 discontinuity.
+   * - Forward Commit Section (t in [0, 0.28]): Strictly straight forward in parking lane (offset === offset0).
+   *   Guaranteed 0 initial angular discontinuity (exitPathTangent(0) === parkedForward).
+   * - Gradual Steering Section (t in [0.28, 0.85]): Smooth C2 lane shift toward road center.
+   * - Exit Section (t in [0.85, 1.0]): Accelerates down the open highway and fades out.
    */
   public evaluateExitPath(t: number): { s: number; offset: number } {
     const s0 = this.presentationS;
     const offset0 = this.presentationOffset;
-    const prog = Math.pow(clamp(t, 0, 1), 1.7);
-    const s = s0 + this.headingDir * (prog * 38.0);
+    // Progressive forward acceleration down the road (42m total)
+    const prog = Math.pow(clamp(t, 0, 1), 1.65);
+    const s = s0 + prog * 42.0;
     
-    // Lateral shift begins after initial straight rollout (t >= 0.18)
-    const latStart = 0.18;
-    const latU = t > latStart ? (t - latStart) / (1.0 - latStart) : 0;
+    // Forward commit distance: strictly 0 lateral shift for the first 28% of travel (straight rollout)
+    const latStart = 0.28;
+    const latU = t > latStart ? clamp((t - latStart) / (0.85 - latStart), 0, 1) : 0;
     const latProg = this.smootherstep(latU);
-    const offset = offset0 - (latProg * 0.9 * Math.sign(offset0));
+    // Smooth lane shift toward the central corridor
+    const lateralShift = 2.2 * Math.sign(offset0);
+    const offset = offset0 - latProg * lateralShift;
     return { s, offset };
   }
 
   /**
    * Evaluates the arrival path (s, offset) at normalized progress t [0..1].
-   * - Longitudinal: Approaches from distance, progressively brakes with zero velocity at t=1.0.
-   * - Lateral: Approaches from adjacent lane, finishes merging and straightens completely before t=0.72.
-   * => Guaranteed arrival end tangent strictly matches final parked forward orientation with 0 snap.
+   * - Staged 48m back along the highway in the main driving lane.
+   * - Approach & Curve Section (t in [0.15, 0.68]): Smooth C2 merge into the presentation parking lane.
+   * - Final Straightening Section (t in [0.68, 1.0]): Strictly straight in parking lane (offset === offset0).
+   *   Front wheels center, vehicle decelerates progressively, and stops ALREADY facing the parked heading.
    */
   public evaluateEntryPath(t: number): { s: number; offset: number } {
     const s0 = this.presentationS;
     const offset0 = this.presentationOffset;
-    // Progressive deceleration profile with v(1)=0 and v'(1)=0
-    const prog = 1.0 - Math.pow(1.0 - clamp(t, 0, 1), 2.3);
-    const s = s0 - this.headingDir * (36.0 * (1.0 - prog));
+    // Smooth braking deceleration into the parking slot (48m approach)
+    const prog = 1.0 - Math.pow(1.0 - clamp(t, 0, 1), 2.35);
+    const s = s0 - 48.0 * (1.0 - prog);
     
-    // Lateral merge finishes completely by t = 0.72 (final 28% is purely road-aligned straight)
-    const latEnd = 0.72;
-    const latU = clamp(t / latEnd, 0, 1);
+    // Staged in the main driving lane, merges into parking lane between t=0.15 and t=0.68
+    const latEnd = 0.68;
+    const latU = clamp((t - 0.15) / (latEnd - 0.15), 0, 1);
     const latProg = this.smootherstep(latU);
-    const entryOffset = offset0 - 1.25 * Math.sign(offset0);
+    const entryOffset = offset0 - 2.4 * Math.sign(offset0);
+    // Final 32% (t >= 0.68) is 100% straight along offset0 into the parking spot
     const offset = lerp(entryOffset, offset0, latProg);
     return { s, offset };
   }
@@ -241,7 +243,7 @@ export class GarageController {
     const curr = evaluatePath(t);
 
     // Lookahead forward sample for instantaneous velocity vector
-    const eps = 0.010;
+    const eps = 0.008;
     const u0 = Math.max(0, Math.min(1.0 - eps, t));
     const u1 = u0 + eps;
     const ptA = this.road.point(evaluatePath(u0).s, evaluatePath(u0).offset);
@@ -253,25 +255,12 @@ export class GarageController {
     let worldYaw = this.getPresentationWorldYaw();
     const pathTangent = new THREE.Vector3(0, 0, -1);
 
-    if (len > 0.0001) {
+    if (len > 0.00001) {
       // Vehicle forward is -Z in Three.js, so rotation.y = -atan2(dx, -dz)
       worldYaw = -Math.atan2(dx, -dz);
       pathTangent.set(dx / len, 0, dz / len);
     } else {
-      pathTangent.set(Math.sin(worldYaw), 0, -Math.cos(worldYaw));
-    }
-
-    // Exact boundary continuity enforcement:
-    // At t=0 for exit: start yaw strictly matches getPresentationWorldYaw()
-    if (!isEntry && t <= 0.02) {
-      const targetYaw = this.getPresentationWorldYaw();
-      worldYaw = lerp(targetYaw, worldYaw, t / 0.02);
-    }
-    // At t>=0.96 for entry: arrival yaw strictly matches getPresentationWorldYaw()
-    if (isEntry && t >= 0.96) {
-      const targetYaw = this.getPresentationWorldYaw();
-      const blend = (t - 0.96) / 0.04;
-      worldYaw = lerp(worldYaw, targetYaw, blend);
+      pathTangent.set(-Math.sin(worldYaw), 0, -Math.cos(worldYaw));
     }
 
     // Curvature calculation for front-wheel Ackermann steering
@@ -281,18 +270,18 @@ export class GarageController {
       const ptC = this.road.point(evaluatePath(u2).s, evaluatePath(u2).offset);
       const dx2 = ptC.x - ptB.x;
       const dz2 = ptC.z - ptB.z;
-      if (Math.hypot(dx2, dz2) > 0.0001) {
+      if (Math.hypot(dx2, dz2) > 0.00001) {
         const yaw2 = -Math.atan2(dx2, -dz2);
         const deltaYaw = angleDiff(yaw2, worldYaw);
         const dist = len + Math.hypot(dx2, dz2);
         const curvature = deltaYaw / (dist * 0.5 + 0.0001);
-        steer = clamp(curvature * wheelbase * 1.35, -0.45, 0.45);
+        steer = clamp(curvature * wheelbase * 1.25, -0.45, 0.45);
       }
     }
 
-    // Straighten steering smoothly during final arrival phase (t >= 0.72)
-    if (isEntry && t >= 0.72) {
-      const straightenFactor = 1.0 - clamp((t - 0.72) / 0.20, 0, 1);
+    // Straighten steering smoothly during final arrival phase (t >= 0.68)
+    if (isEntry && t >= 0.68) {
+      const straightenFactor = 1.0 - clamp((t - 0.68) / 0.20, 0, 1);
       steer *= straightenFactor;
     }
 

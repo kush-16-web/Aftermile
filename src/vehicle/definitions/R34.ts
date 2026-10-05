@@ -64,7 +64,22 @@ export const R34Config: VehicleConfig = {
   brakes: { force: 15600, frontBias: .65, handbrakeForce: 10500, reverseDelay: .65 },
   suspension: { stiffness: 31000, damping: 3300, rollStiffness: 120000, pitchStiffness: 165000, travel: .12 },
   dragArea: .71, rollingResistance: .014,
-  camera: { distance: 7.6, height: 2.65, lookAhead: 6.8, closeDistance: 5.1, closeHeight: 1.95, hood: [0,1.02,-1.45], driver: [.32,1.14,0] },
+  camera: {
+    distance: 7.6,
+    height: 2.65,
+    lookAhead: 6.8,
+    closeDistance: 5.1,
+    closeHeight: 1.95,
+    hood: [0, 0.98, 1.45],
+    driver: [0.355, 1.050, -0.030], // Calibrated Japanese RHD driver-eye cockpit anchor (11cm backward)
+    cockpit: {
+      driverEye: [0.355, 1.050, -0.030],
+      lookTarget: [0.355, 1.025, -28.0],
+      fov: 68,
+      near: 0.05,
+      headInertia: { accel: 0.012, brake: 0.018, lateral: 0.014, roll: 0.009 },
+    },
+  },
   lights: {
     headlights: [[-.5746,.649,-2.05],[.5746,.649,-2.05]], intensity: 110, range: 85,
     materials: {

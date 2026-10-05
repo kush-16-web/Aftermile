@@ -75,8 +75,12 @@ export class Game {
   position = new THREE.Vector3();
   frameNumber = 0;
   lastOrigin = 0;
+  wasOffRoad = false;
+  routeRecoveredTimer = 0;
   running = true;
-  debug: { toggle: () => void; update: () => void } | null = null;
+  debugCockpitPos = new THREE.Vector3();
+  debugCockpitQuat = new THREE.Quaternion();
+  debug: { toggle: () => void; update: (fps?: number, dt?: number, cameraMode?: string, accumulatorAlpha?: number, navDebug?: { currentRoad?: string; nextRoad?: string; maneuverType?: string; distance?: number; routeProgress?: number; routeSegment?: string }) => void } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -192,7 +196,15 @@ export class Game {
     const weather = this.settings.data.weather;
     this.weather.set(weather === 'live' ? 'clear' : weather);
     if (weather === 'live') this.ui.toast('Choose a city to reconnect live weather.');
-    this.cameras.mode = this.settings.data.camera; this.applyGraphics(); this.world.update(this.car.s, true);
+    this.cameras.mode = this.settings.data.camera;
+    this.applyGraphics();
+    this.world.update(this.car.s, true);
+    // Explicitly synchronize initial vehicle visual transform and camera pose on road surface
+    const initialPose = this.vehicle.render(1, this.world.origin, this.sky.night);
+    this.position.copy(this.hero.group.position);
+    this.hero.setCameraMode(this.cameras.mode);
+    this.cameras.update(0.016, 0, this.car, initialPose, this.world.origin, this.screen === 'menu', this.settings.data.fov, this.settings.data.smoothing, this.settings.data.reducedMotion, this.hero.driverEye);
+
     this.input.onAction = key => {
       if (key === 'F2' && import.meta.env.DEV) { this.debug?.toggle(); return; }
       if (key === 'Escape') { if (this.ui.activeOverlay) return; if (this.screen === 'playing') this.pause(); else if (this.screen === 'paused') this.resume(); return; }
@@ -210,7 +222,10 @@ export class Game {
     canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); this.running = false; this.pause(); this.ui.toast('Graphics paused. Waiting for your browser to restore the display.'); });
     canvas.addEventListener('webglcontextrestored', () => { this.running = true; this.lastTime = 0; this.ui.toast('Graphics restored. Resume when you are ready.'); });
     this.resize(); void this.loadVehicles();
-    if (import.meta.env.DEV) void import('../vehicle/VehicleDebug.ts').then(({ VehicleDebug }) => { this.debug = new VehicleDebug(this.vehicle, () => this.cameras.initialized = false, () => this.audio); });
+    if (import.meta.env.DEV) {
+      void import('../vehicle/VehicleDebug.ts').then(({ VehicleDebug }) => { this.debug = new VehicleDebug(this.vehicle, () => this.cameras.initialized = false, () => this.audio); });
+      if (typeof window !== 'undefined') (window as any).__AFTERMILE_GAME__ = this;
+    }
     requestAnimationFrame(t => this.frame(t));
   }
 
@@ -254,8 +269,20 @@ export class Game {
       else this.ui.toast(`The ${this.vehicle.config.name} is still loading…`);
       return;
     }
-    this.zen=zen;this.hiddenHud=zen&&this.settings.data.zenHideHud;this.screen='playing';this.input.clear();this.input.enabled=true;this.ui.setScreen('playing');this.setHud();void this.audio.start();
-    this.ui.toast(zen?'Zen drive · no fuel, no hurry':'W to accelerate · A / D to steer · C for camera');
+    this.zen = zen;
+    this.hiddenHud = zen && this.settings.data.zenHideHud;
+    this.screen = 'playing';
+    this.input.clear();
+    this.input.enabled = true;
+    this.cameras.initialized = false; // Reset camera initialization to snap cleanly to road/driver pose
+    this.hero.setCameraMode(this.cameras.mode);
+    const pose = this.vehicle.render(1, this.world.origin, this.sky.night);
+    this.position.copy(this.hero.group.position);
+    this.cameras.update(0.016, 0, this.car, pose, this.world.origin, false, this.settings.data.fov, this.settings.data.smoothing, this.settings.data.reducedMotion, this.hero.driverEye);
+    this.ui.setScreen('playing');
+    this.setHud();
+    void this.audio.start();
+    this.ui.toast(zen ? 'Zen drive · no fuel, no hurry' : 'W to accelerate · A / D to steer · C for camera');
   }
 
   resume() {
@@ -270,8 +297,8 @@ export class Game {
   pause(){this.screen='paused';this.input.enabled=false;this.input.clear();this.audio.pause();this.navVoice.cancel();this.ui.setScreen('paused');this.persist();}
   menu(){this.persist();this.screen='menu';this.input.enabled=false;this.input.clear();this.audio.pause();this.navVoice.cancel();this.ui.setScreen('menu');document.body.classList.remove('zen-hidden');}
   restart(){this.persist();this.car.reset(160);this.car.fuel=100;this.car.distance=0;this.car.cleanDistance=0;this.car.damage=0;this.lastSavedDistance=0;this.traffic.reset();this.effects.reset();this.navVoice.cancel();this.world.rebuild(this.car.s);this.cameras.initialized=false;this.start(this.zen);}
-  recover(){this.car.reset();if(this.car.fuel<5)this.car.fuel=8;this.car.damage=0;this.cameras.initialized=false;this.effects.reset();this.audio.chime();this.ui.toast('Back on the road. Take your time.');}
-  cycleCamera(){this.cameras.mode=(this.cameras.mode+1)%cameraNames.length;this.settings.data.camera=this.cameras.mode;this.settings.save();this.cameras.initialized=false;this.ui.showCameraBadge(cameraNames[this.cameras.mode]);this.ui.toast(cameraNames[this.cameras.mode]+' camera');}
+  recover(){this.car.reset();if(this.car.fuel<5)this.car.fuel=8;this.car.damage=0;this.cameras.initialized=false;this.effects.reset();this.audio.chime();this.routeRecoveredTimer=2.5;}
+  cycleCamera(){const prev = this.cameras.mode; this.cameras.mode=(this.cameras.mode+1)%cameraNames.length;this.settings.data.camera=this.cameras.mode;this.settings.save();this.cameras.onModeChanged(prev);this.hero.setCameraMode(this.cameras.mode);this.ui.showCameraBadge(cameraNames[this.cameras.mode]);}
   setHud(){document.body.classList.toggle('zen-hidden',this.hiddenHud);}
   setSetting(key:keyof SettingsData,value:unknown) {
     // Only controls with known types can mutate preferences.
@@ -279,7 +306,7 @@ export class Game {
     (this.settings.data as any)[key]=value;
     if(key==='quality')Object.assign(this.settings.data,GRAPHICS[this.settings.data.quality]);
     if(key==='weather'){this.weather.set(this.settings.data.weather);if(value==='live'&&!this.weather.city)this.ui.toast('Choose a city or use your location.');}
-    if(key==='camera'){this.cameras.mode=this.settings.data.camera;this.cameras.initialized=false;}
+    if(key==='camera'){const prev = this.cameras.mode; this.cameras.mode=this.settings.data.camera;this.cameras.onModeChanged(prev);this.hero.setCameraMode(this.cameras.mode);}
     if(['navVoice','navVoiceVolume','navVoiceId'].includes(key)){
       this.navVoice.setSettings(this.settings.data.navVoice, this.settings.data.navVoiceVolume, this.settings.data.navVoiceId);
     }
@@ -325,7 +352,11 @@ export class Game {
     }
     this.position.copy(this.hero.group.position);
     this.effects.update(dt, this.time, this.car, this.hero, this.camera, w, this.sky.night);
-    this.cameras.update(dt, this.cinematicTime, this.car, pose, origin, this.screen === 'menu', s.fov, s.smoothing, s.reducedMotion);
+    this.cameras.update(dt, this.cinematicTime, this.car, pose, origin, this.screen === 'menu', s.fov, s.smoothing, s.reducedMotion, this.hero.driverEye);
+    if (import.meta.env.DEV && this.cameras.mode === 3) {
+      this.debugCockpitPos.copy(this.camera.position);
+      this.debugCockpitQuat.copy(this.camera.quaternion);
+    }
     const inTunnel=this.road.isTunnel(this.car.s);
     this.sky.update(moving?dt:0,this.cinematicTime,this.camera,this.position,w,s.timeMode,s.hour,this.weather.mode==='live'?this.weather.city?.timezone:undefined,s.reducedFlashes);
     const sunDir = this.sky.sun.position.clone().sub(this.position).normalize();
@@ -452,8 +483,13 @@ export class Game {
           loc = 'OBSIDIAN PASS';
         } else if (nearestEvent.type === 'curve') {
           const bankVal = this.road.bank(nearestEvent.stationS);
-          icon = bankVal > 0 ? 'turn_right' : 'turn_left';
-          action = bankVal > 0 ? (nearestDist < 45 ? 'SHARP RIGHT' : 'TURN RIGHT') : (nearestDist < 45 ? 'SHARP LEFT' : 'TURN LEFT');
+          if (Math.abs(bankVal) > 0.07) {
+            icon = bankVal > 0 ? 'turn_right' : 'turn_left';
+            action = bankVal > 0 ? (nearestDist < 45 ? 'SHARP RIGHT' : 'TURN RIGHT') : (nearestDist < 45 ? 'SHARP LEFT' : 'TURN LEFT');
+          } else {
+            icon = bankVal > 0 ? 'slight_right' : 'slight_left';
+            action = bankVal > 0 ? (nearestDist < 45 ? 'BEAR RIGHT' : 'CURVE RIGHT') : (nearestDist < 45 ? 'BEAR LEFT' : 'CURVE LEFT');
+          }
           loc = currentRoadName;
         }
 
@@ -555,6 +591,23 @@ export class Game {
         night: this.sky.night,
       }, dt * 4);
 
+      if (this.routeRecoveredTimer > 0) {
+        this.routeRecoveredTimer -= dt;
+      }
+      const isOffRoad = Math.abs(this.car.offset) > 7.2;
+      if (this.wasOffRoad && !isOffRoad) {
+        this.routeRecoveredTimer = 2.5;
+      }
+      this.wasOffRoad = isOffRoad;
+
+      const isWrongWay = Math.abs(this.car.speed) > 1.5 && (Math.abs(this.car.heading) > Math.PI * 0.65);
+      const sharpBend = Boolean(
+        nearestEvent &&
+        nearestEvent.type === 'curve' &&
+        nearestDist <= 110 &&
+        Math.abs(this.road.bank(nearestEvent.stationS)) > 0.065
+      );
+
       this.ui.update({
         speed: this.car.speed,
         gear: this.car.speed < -.3 ? 'R' : this.car.speed > .3 ? String(this.car.gear) : 'N',
@@ -584,8 +637,19 @@ export class Game {
         navEvent,
         activeManeuver,
         nearbyPois,
+        isOffRoad,
+        isWrongWay,
+        sharpBend,
+        routeRecovered: this.routeRecoveredTimer > 0,
       }, dt * 4);
-      this.debug?.update();
+      this.debug?.update(this.fps, dt, cameraNames[this.cameras.mode], moving ? this.accumulator * 120 : 0, {
+        currentRoad: currentRoadName,
+        nextRoad: activeManeuver?.location || currentRoadName,
+        maneuverType: activeManeuver?.action || 'CONTINUE',
+        distance: activeManeuver?.distance ?? 0,
+        routeProgress: region.progress,
+        routeSegment: region.name,
+      });
       if (this.lastRegion && this.lastRegion !== region.name && moving) {
         this.ui.showRegionBanner(region.name, 'PACIFIC COAST EXPRESSWAY');
       }
@@ -594,6 +658,14 @@ export class Game {
     // Render live mirrors only in Cockpit mode (time-sliced for browser performance)
     if (this.cameras.mode === 3) {
       this.hero.renderMirrors(this.renderer, this.scene, this.frameNumber);
+    }
+    if (import.meta.env.DEV && this.cameras.mode === 3) {
+      if (
+        this.camera.position.distanceToSquared(this.debugCockpitPos) > 1e-6 ||
+        Math.abs(this.camera.quaternion.dot(this.debugCockpitQuat)) < 0.99999
+      ) {
+        console.warn('[COCKPIT] Single camera owner assertion failed: camera transform was modified after DriverEye!');
+      }
     }
     this.renderer.info.reset();this.composer.render();this.saveTimer+=dt;if(this.saveTimer>15){this.persist();this.saveTimer=0;}
   }

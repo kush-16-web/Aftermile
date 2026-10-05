@@ -24,17 +24,23 @@ test('Garage Transition: Path Tangent Continuity (0 Start Snap & 0 Arrival Snap)
   // Test 1: Outgoing exit path start tangent at t=0 must match parkedYaw
   const exitKine0 = garage.derivePathKinematics(u => garage.evaluateExitPath(u), 0.0, r34Model.config.wheelbase, false);
   const exitYawDiff0 = Math.abs(angleDiff(exitKine0.worldYaw, parkedYaw));
-  assert.ok(exitYawDiff0 < 0.001, `Exit start yaw diff (${exitYawDiff0.toFixed(6)} rad) must be effectively 0`);
+  assert.ok(exitYawDiff0 < 0.0001, `Exit start yaw diff (${exitYawDiff0.toFixed(6)} rad) must be effectively 0`);
 
-  // Test 2: Incoming arrival path end tangent at t=1 must match parkedYaw
+  // Test 2: Forward commit distance: offset(t) is locked at offset0 for the first 28% of exit
+  for (let t = 0.0; t <= 0.28; t += 0.04) {
+    const exitPt = garage.evaluateExitPath(t);
+    assert.ok(Math.abs(exitPt.offset - offset0) < 0.0001, `Exit offset at t=${t} is strictly straight in parking lane`);
+  }
+
+  // Test 3: Incoming arrival path end tangent at t=1 must match parkedYaw
   const entryKine1 = garage.derivePathKinematics(u => garage.evaluateEntryPath(u), 1.0, bmwModel.config.wheelbase, true);
   const entryYawDiff1 = Math.abs(angleDiff(entryKine1.worldYaw, parkedYaw));
-  assert.ok(entryYawDiff1 < 0.001, `Entry end yaw diff (${entryYawDiff1.toFixed(6)} rad) must be effectively 0`);
+  assert.ok(entryYawDiff1 < 0.0001, `Entry end yaw diff (${entryYawDiff1.toFixed(6)} rad) must be effectively 0`);
 
-  // Test 3: Lateral merge finishes before final 20% (offset(t) === offset0 for t in [0.75, 1.0])
-  for (let t = 0.75; t <= 1.0; t += 0.05) {
+  // Test 4: Lateral merge finishes before final 30% (offset(t) === offset0 for t in [0.68, 1.0])
+  for (let t = 0.68; t <= 1.0; t += 0.05) {
     const entryPt = garage.evaluateEntryPath(t);
-    assert.ok(Math.abs(entryPt.offset - offset0) < 0.001, `Entry offset at t=${t} is already aligned with parking lane`);
+    assert.ok(Math.abs(entryPt.offset - offset0) < 0.0001, `Entry offset at t=${t} is already aligned with parking lane`);
   }
 });
 
