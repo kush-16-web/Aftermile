@@ -1,48 +1,39 @@
-# Aftermile Vehicle Foundation Pass 1.2 — Completed Handoff
+# World Foundation Pass 1 — active handoff
 
-**Updated:** 2026-09-30  
-**Status:** Vehicle Foundation Pass 1.2 is **COMPLETE and APPROVED**. Ready for Astra to begin **Pass 2: Road + World Foundation**.
+Updated 2026-10-05. Read PROJECT_CONTEXT.md first. Base: `156d893bb3449cf66a48f54874558dbf9db26c65` on `main`. The current user explicitly authorizes checkpoint pushes. Frozen vehicle, audio, cockpit, VFX, navigation and Garage systems are protected.
 
----
+## Completed checkpoint 1
 
-## 1. Accomplished in Pass 1.2
+- Road station/offset API is unchanged. Stateless seeded C2 profiles replace short sine waves: 4 km horizontal sections begin with 1.2 km straights, followed by broad transitions. Elevation uses 6 km profiles; regions last 9.6 km and natural biomes lead the journey.
+- 160 m streaming chunks remain. Medium retains up to 23 chunks (16 ahead / 6 behind / current), low 19, ultra 27. Startup generates four immediate chunks; then one chunk/frame fills the horizon. Distant chunks are disposed. World stats expose build duration and contiguous coverage.
+- Targeted 100 km / three-seed geometry regression, streaming/reverse/teleport bounds and existing road/drive smoke checks: 5/5 pass. Typecheck passes.
 
-- **R34 Asset Integration & Lossless Preparation:**
-  - Prepared `public/models/r34/r34.glb` using lossless node and primitive batching (266,060 triangles, 72 meshes, 85 nodes).
-  - Repaired 7 untextured wheel submaterials by binding the original wheel atlas texture references.
-  - Linked dedicated lamp shader materials for headlights, taillights, brake strips, and reverse lenses.
-- **Steering Calibration & High-Speed Verification:**
-  - Validated the single road-wheel angle curve (`maxAngleBySpeed`) from 10 to 160 km/h.
-  - Calibrated the 100 km/h loaded lane-change countersteer sequence (0.8 s steer, 0.95 s countersteer under 100 $\rightarrow$ 144 km/h acceleration), achieving 4.20 m displacement and $0.39^\circ$ residual heading ($< 5.5\text{ m}$ single-lane bound).
-- **Kinematics & Wheel Contact:**
-  - Verified front Ackermann steering geometry, independent 4-wheel contact height sampling, visual sprung-mass heave damping, and wheel spin rotations around the X-axis.
-- **W + Space Physics Bug Integrity:**
-  - Adversarially stress-tested stationary launch abuse, highway handbrake locks, rapid Space pumping, and violent slaloms.
-  - Confirmed energy conservation: zero runaway sideways velocity, zero launching/flying, and complete engine torque interlock when handbrake is engaged.
-- **Hill Climbing:**
-  - Verified uphill launches, stopping, handbrake hold, and forward drive resumption on 5%, 8%, and 12% grades.
-- **Audio Architecture & Unit Tests:**
-  - Corrected 7-band slot weight assertions in `tests/vehicle-audio.test.ts`.
-  - Confirmed graceful fallback when engine recordings are missing (`needs-recordings`).
-- **Test Suite Status:**
-  - **25 / 25 automated unit and deep validation tests passing (100% green)**.
-  - TypeScript typecheck (`tsc --noEmit`) and production bundle build (`npm run build`) pass cleanly.
+## Current architecture / files
 
----
+`src/road/RouteProfile.ts`: analytic long route, derivatives and seed.
+`src/road/Road.ts`: public route/biome/corridor API used by all consumers.
+`src/world/Streaming.ts`: bounded window and creation priority.
+`src/world/World.ts`: lifecycle and timing counters.
+`src/world/WorldChunk.ts`: existing asphalt, terrain and roadside batches (next implementation area).
+`tests/world-foundation.test.ts`: long route / lifecycle regression.
 
-## 2. Unaltered Systems Reserved for Astra (Pass 2)
+No third-party assets added yet. No frozen subsystem modified.
 
-Per instructions, the following systems remain untouched and ready for Astra's upcoming Road + World Foundation pass:
-- `src/road/*` (Splines, biomes, junctions, elevation)
-- `src/world/*` (Terrain meshes, streaming, rigid colliders, props)
-- `src/sky/*` & `src/weather/*` (Sky dome, atmosphere, dynamic weather visuals)
+## Exact next implementation step
 
----
+Implement shared organic terrain/corridor/coast sampling through `Road.terrain`, then replace coarse terrain mesh sampling and preserve identical chunk-edge heights/normals. Test road exclusion, slopes, seams, sea transitions and numerical collision agreement. Follow with curated CC0 assets + WORLD_ASSETS.md, deterministic instanced vegetation/LOD, water shore-depth integration and distant scenery. Keep mainline asphalt dimensions and the existing road API.
 
-## 3. Verification Commands
+## Known limits / remaining work
 
-```bash
-npm run typecheck
-npm test
-npm run build
-```
+Terrain/trees/beach are still the old prototype at checkpoint 1. New stream generation is bounded by one full chunk per frame, not an asynchronous worker; profile actual build cost before claiming hitch-free. No GPU/FPS claim yet. Existing stations/bridges/city assets were retained, not expanded. Final npm test / typecheck / build and personal daylight/autumn-evening validation remain.
+
+## Continue
+
+`npm ci`
+`npm run dev` → http://localhost:4173
+`node --experimental-transform-types --test tests/world-foundation.test.ts tests/core.test.ts`
+`npm run typecheck`
+`npm test`
+`npm run build`
+
+Push each stable milestone. At the final checkpoint provide the exact accessible playtest URL, or the dev command/local URL if hosting cannot be exposed. Do not deploy the older vehicle checkout over the current GitHub source.

@@ -2,20 +2,28 @@ import * as THREE from 'three';
 import { CHUNK, Road } from '../road/Road.ts';
 import { Materials } from './Materials.ts';
 import { WorldChunk } from './WorldChunk.ts';
+import { nextChunk, streamWindow } from './Streaming.ts';
 export class World {
   chunks=new Map<number,WorldChunk>();materials=new Materials();origin=0;vegetation=1;range=8;
+  stats={generated:0,disposed:0,lastBuildMs:0,maxBuildMs:0,aheadMetres:0,behindMetres:0};
+  private hasChunk=(id:number)=>this.chunks.has(id);
   constructor(public scene:THREE.Scene,public road:Road) {}
   update(s:number,immediate=false) {
     this.origin=Math.floor(s/3200)*3200;
-    const center=Math.floor(s/CHUNK),min=Math.max(-2,center-3),max=center+this.range;
-    for(const [id,chunk]of this.chunks)if(id<min||id>max){chunk.dispose();this.chunks.delete(id);}
-    let created=0;
-    const order=[center,center+1,center-1,...Array.from({length:max-min+1},(_,i)=>min+i)];
-    for(const i of order) {
-      if(i<min||i>max||this.chunks.has(i))continue;
-      if(!immediate&&created>=1)break;
-      const chunk=new WorldChunk(i,this.road,this.materials,this.vegetation);this.chunks.set(i,chunk);this.scene.add(chunk.group);created++;
+    const {center,min,max}=streamWindow(s,this.range);
+    for(const [id,chunk]of this.chunks)if(id<min||id>max){chunk.dispose();this.chunks.delete(id);this.stats.disposed++;}
+    // Startup builds only the immediate drive corridor; fill the distant horizon
+    // one chunk/frame. Driving retains ~2.6 km ahead at medium, 960 m behind.
+    let remaining=immediate?4:1;
+    while(remaining-->0){
+      const i=nextChunk(center,min,max,this.hasChunk);if(i===null)break;
+      const began=performance.now();
+      const chunk=new WorldChunk(i,this.road,this.materials,this.vegetation);this.chunks.set(i,chunk);this.scene.add(chunk.group);
+      this.stats.lastBuildMs=performance.now()-began;this.stats.maxBuildMs=Math.max(this.stats.maxBuildMs,this.stats.lastBuildMs);this.stats.generated++;
     }
+    let front=center;while(this.chunks.has(front))front++;
+    let back=center;while(this.chunks.has(back))back--;
+    this.stats.aheadMetres=Math.max(0,front*CHUNK-s);this.stats.behindMetres=Math.max(0,s-(back+1)*CHUNK);
     for(const chunk of this.chunks.values())chunk.group.position.z=this.origin-chunk.start;
   }
   rebuild(s:number) {for(const c of this.chunks.values())c.dispose();this.chunks.clear();this.update(s,true);}

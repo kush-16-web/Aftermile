@@ -1,10 +1,13 @@
 import { hash, lerp, mod, smooth } from '../core/math.ts';
+import { REGION_SPAN, routeProfile } from './RouteProfile.ts';
 
 export type Biome = 'coast' | 'country' | 'bridge' | 'city' | 'tunnel' | 'plains';
 export const CHUNK = 160;
 export const ROAD_HALF = 8;
-export const REGION_LENGTH = 2400;
-const sequence: Biome[] = ['coast', 'country', 'bridge', 'city', 'tunnel', 'plains'];
+export const REGION_LENGTH = REGION_SPAN;
+// Natural landscapes lead the journey. Existing bridge/tunnel/city APIs remain
+// available to traffic and navigation; no new city systems are introduced.
+const sequence: Biome[] = ['coast', 'country', 'plains', 'coast', 'country', 'tunnel', 'bridge', 'plains', 'city'];
 const names: Record<Biome, string[]> = {
   coast: ['Ember Coast', 'Crescent Bay', 'Stillwater Shore'],
   country: ['Cypress Valley', 'Golden Meadows', 'Juniper Hills'],
@@ -20,28 +23,22 @@ export class Road {
     const cycle = Math.floor(index / sequence.length);
     const n = index % sequence.length;
     // The first trip pays tribute to the extension; later trips change order.
-    const shift = cycle === 0 ? 0 : Math.floor(hash(cycle, this.seed) * 6);
+    const shift = cycle === 0 ? 0 : Math.floor(hash(cycle, this.seed) * sequence.length);
     const biome = sequence[(n + shift) % sequence.length];
     return { index, biome, name: names[biome][Math.floor(hash(index + 4, this.seed) * 3)], progress: mod(s, REGION_LENGTH) / REGION_LENGTH };
   }
   weights(s: number) {
-    const r = this.region(s), next = this.region(s + 350);
-    const blend = smooth((r.progress * REGION_LENGTH - (REGION_LENGTH - 350)) / 350);
+    const r = this.region(s), next = this.region(s + 1200);
+    const blend = smooth((r.progress * REGION_LENGTH - (REGION_LENGTH - 1200)) / 1200);
     const out = { coast: 0, country: 0, bridge: 0, city: 0, tunnel: 0, plains: 0 };
     out[r.biome] += 1 - blend; out[next.biome] += blend;
     return out;
   }
-  center(s: number) {
-    const p = this.seed * 0.014;
-    return 92 * Math.sin(s * 0.00125 + p) + 35 * Math.sin(s * 0.0031 + p * 2) + 16 * Math.sin(s * 0.00037 + p);
-  }
-  slope(s: number) {
-    const p = this.seed * 0.014;
-    return 0.115 * Math.cos(s * 0.00125 + p) + 0.1085 * Math.cos(s * 0.0031 + p * 2) + 0.00592 * Math.cos(s * 0.00037 + p);
-  }
+  center(s: number) { return routeProfile(s, this.seed); }
+  slope(s: number) { return routeProfile(s, this.seed, false, 1); }
   heading(s: number) { return Math.atan(this.slope(s)); }
-  height(s: number) { return 18 + 7 * Math.sin(s * 0.0011 + 0.9) + 3 * Math.sin(s * 0.0026); }
-  grade(s: number) { return 0.0077 * Math.cos(s * 0.0011 + 0.9) + 0.0078 * Math.cos(s * 0.0026); }
+  height(s: number) { return routeProfile(s, this.seed, true); }
+  grade(s: number) { return routeProfile(s, this.seed, true, 1); }
   bank(s: number) { return (this.heading(s + 4) - this.heading(s - 4)) * 9; }
   point(s: number, offset = 0, lift = 0) {
     const h = this.heading(s);
