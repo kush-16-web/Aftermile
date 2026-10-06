@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CHUNK, Road } from '../road/Road.ts';
 import { Materials } from './Materials.ts';
-import { WorldChunk } from './WorldChunk.ts';
+import { WorldChunk, type LeafSource } from './WorldChunk.ts';
 import { nextChunk, streamWindow } from './Streaming.ts';
 import { WorldAssetLibrary } from './WorldAssetLibrary.ts';
 export class World {
@@ -52,4 +52,12 @@ export class World {
   }
   rebuild(s:number) {for(const c of this.chunks.values())c.dispose();this.chunks.clear();this.update(s,true);}
   get objects() {let count=0;for(const c of this.chunks.values())count+=c.group.children.length;return count;}
+  /** Leaf emitters in the same origin-shifted frame as the hero and particles. */
+  get leafSources():LeafSource[]{
+    const out:LeafSource[]=[];
+    for(const chunk of this.chunks.values())for(const source of chunk.leafSources){
+      out.push({...source,z:source.z+this.origin-chunk.start});
+    }
+    return out;
+  }
 }

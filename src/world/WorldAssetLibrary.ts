@@ -15,11 +15,13 @@ export class WorldAssetLibrary {
   constructor(private materials:Materials){
     const loader=new GLTFLoader();
     this.ready=Promise.all([
-      this.load(loader,'tree','/world/kenney/tree_detailed.glb',8),
-      this.load(loader,'pine','/world/kenney/tree_pineTallB_detailed.glb',12),
+      // Mature scale keeps the tree silhouette readable against the broad
+      // landforms; placement density remains sparse so the horizon stays open.
+      this.load(loader,'tree','/world/kenney/tree_detailed.glb',17),
+      this.load(loader,'pine','/world/kenney/tree_pineTallB_detailed.glb',23),
       this.load(loader,'rock','/world/kenney/rock_largeC.glb',2.8),
-      this.load(loader,'bush','/world/kenney/plant_bushDetailed.glb',2.2),
-      this.load(loader,'grass','/world/kenney/grass_leafs.glb',1.2),
+      this.load(loader,'bush','/world/kenney/plant_bushDetailed.glb',2.8),
+      this.load(loader,'grass','/world/kenney/grass_leafs.glb',1.35),
     ]).then(()=>{this.loaded=this.parts.size>0;}).catch(()=>{this.loaded=false;});
   }
   has(kind:WorldAssetKind){return (this.parts.get(kind)?.length??0)>0;}

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { WeatherState } from './Weather.ts';
-import { clamp, lerp } from '../core/math.ts';
+import type { LeafSource } from '../world/WorldChunk.ts';
+import { clamp, hash, lerp } from '../core/math.ts';
 
 const MAX_LEAVES = 320;
 const MAX_RAIN = 1800;
@@ -15,6 +16,9 @@ interface LeafParticle {
   scale: number;
   type: number; // 0..3
   phase: number;
+  sourceKey: number;
+  settled: boolean;
+  settledTime: number;
 }
 
 interface SprayParticle {
@@ -154,24 +158,29 @@ export class Particles {
     this.leafMesh.frustumCulled = false;
     this.group.add(this.leafMesh);
 
-    // Initialize Leaves Pool in a cylinder around the player
+    // Initialize a deterministic pool. Positions are assigned to canopy
+    // sources when autumn is active, so an empty meadow never gets a camera
+    // centered cloud of unrelated leaves.
     for (let i = 0; i < MAX_LEAVES; i++) {
-      const ang = Math.random() * Math.PI * 2;
-      const rad = 4 + Math.random() * 45;
+      const ang = hash(i, 991) * Math.PI * 2;
+      const rad = 2 + hash(i, 992) * 12;
       this.leafData.push({
         x: Math.cos(ang) * rad,
-        y: 1.5 + Math.random() * 26,
+        y: 1.5 + hash(i, 993) * 16,
         z: Math.sin(ang) * rad,
         vx: 0, vy: 0, vz: 0,
-        rotX: Math.random() * Math.PI * 2,
-        rotY: Math.random() * Math.PI * 2,
-        rotZ: Math.random() * Math.PI * 2,
-        rotSpeedX: (Math.random() - 0.5) * 3.5,
-        rotSpeedY: (Math.random() - 0.5) * 3.5,
-        rotSpeedZ: (Math.random() - 0.5) * 3.5,
-        scale: 0.75 + Math.random() * 0.7,
-        type: Math.floor(Math.random() * 4),
-        phase: Math.random() * Math.PI * 2,
+        rotX: hash(i, 994) * Math.PI * 2,
+        rotY: hash(i, 995) * Math.PI * 2,
+        rotZ: hash(i, 996) * Math.PI * 2,
+        rotSpeedX: (hash(i, 997) - 0.5) * 3.5,
+        rotSpeedY: (hash(i, 998) - 0.5) * 3.5,
+        rotSpeedZ: (hash(i, 999) - 0.5) * 3.5,
+        scale: 0.75 + hash(i, 1000) * 0.7,
+        type: Math.floor(hash(i, 1001) * 4),
+        phase: hash(i, 1002) * Math.PI * 2,
+        sourceKey: -1,
+        settled: false,
+        settledTime: 0,
       });
     }
 
@@ -295,7 +304,8 @@ export class Particles {
     carSpeed = 0,
     carLateralVel = 0,
     carSlip = 0,
-    leafDensity = 1
+    leafDensity = 1,
+    leafSources: LeafSource[] = []
   ) {
     this.group.position.copy(center);
 
@@ -386,82 +396,61 @@ export class Particles {
     }
 
     // ----------------------------------------------------
-    // 3. UPDATE AUTUMN LEAVES (3D Flutter, Tumbling & Car Wake)
+    // 3. UPDATE AUTUMN LEAVES (tree-local flutter, settling and car wake)
     // ----------------------------------------------------
-    this.leafMesh.visible = !inTunnel && w.autumn > 0.08 && quality > 0 && leafDensity > .01;
-    if (this.leafMesh.visible) {
-      const activeLeaves = Math.floor(MAX_LEAVES * quality * w.autumn * leafDensity);
-
-      for (let i = 0; i < MAX_LEAVES; i++) {
-        if (i >= activeLeaves) {
-          this.leafDummy.position.set(0, -9999, 0);
-          this.leafDummy.updateMatrix();
-          this.leafMesh.setMatrixAt(i, this.leafDummy.matrix);
-          continue;
+    const nearbySources=leafSources
+      .filter(source=>source.load>.08&&Math.hypot(source.x-center.x,source.z-center.z)<82)
+      .sort((a,b)=>Math.hypot(a.x-center.x,a.z-center.z)-Math.hypot(b.x-center.x,b.z-center.z))
+      .slice(0,24);
+    const canopyLoad=nearbySources.reduce((sum,source)=>sum+source.load,0);
+    this.leafMesh.visible=!inTunnel&&w.autumn>.08&&quality>0&&leafDensity>.01&&nearbySources.length>0;
+    if(this.leafMesh.visible){
+      const coverage=clamp(canopyLoad/8,.28,1);
+      const activeLeaves=Math.min(MAX_LEAVES,Math.floor(MAX_LEAVES*quality*w.autumn*coverage));
+      for(let i=0;i<MAX_LEAVES;i++){
+        if(i>=activeLeaves){
+          this.leafData[i].sourceKey=-1;
+          this.leafDummy.position.set(0,-9999,0);this.leafDummy.updateMatrix();this.leafMesh.setMatrixAt(i,this.leafDummy.matrix);continue;
         }
-
-        const l = this.leafData[i];
-        l.phase += dt * (1.8 + l.scale);
-
-        // Natural flutter and wind acceleration
-        const flutterX = Math.sin(l.phase * 1.5) * 1.8 + windX * 1.4;
-        const flutterZ = Math.cos(l.phase * 1.2) * 1.5 + windZ * 1.2;
-        const fallRate = 1.4 * (0.8 + l.scale * 0.4);
-
-        // Vehicle Wake Displacement: If car passes near this leaf, push it outward and lift it!
-        const distToCar = Math.hypot(l.x, l.z);
-        if (distToCar < 6.8 && Math.abs(carSpeed) > 3.0) {
-          const wakeFactor = (1.0 - distToCar / 6.8) * Math.min(Math.abs(carSpeed) * 0.35, 12);
-          const pushAngle = Math.atan2(l.x, l.z);
-          l.vx += Math.sin(pushAngle) * wakeFactor * 1.8;
-          l.vz += (Math.cos(pushAngle) * wakeFactor - Math.sign(carSpeed) * wakeFactor * 0.6);
-          l.vy += wakeFactor * 0.8; // Lift into wake
-          l.rotSpeedX += (Math.random() - 0.5) * wakeFactor * 3.0;
-          l.rotSpeedY += (Math.random() - 0.5) * wakeFactor * 3.0;
-        }
-
-        // Apply velocities and air damping
-        l.x += (flutterX + l.vx) * dt;
-        l.y += (-fallRate + l.vy) * dt;
-        l.z += (flutterZ + l.vz - carSpeed * 0.4) * dt;
-
-        l.vx *= (1.0 - 2.5 * dt);
-        l.vy *= (1.0 - 2.8 * dt);
-        l.vz *= (1.0 - 2.5 * dt);
-
-        // Tumbling rotation
-        l.rotX += (l.rotSpeedX + Math.sin(l.phase) * 1.8) * dt;
-        l.rotY += (l.rotSpeedY + Math.cos(l.phase * 0.8) * 1.5) * dt;
-        l.rotZ += l.rotSpeedZ * dt;
-
-        // Ground settling and recycling
-        if (l.y < 0.15) {
-          // Leaf reaches ground: linger briefly, then cycle back to canopy
-          if (Math.random() < 0.04) {
-            l.y = 18 + Math.random() * 12;
-            const ang = Math.random() * Math.PI * 2;
-            const r = 6 + Math.random() * 38;
-            l.x = Math.cos(ang) * r;
-            l.z = Math.sin(ang) * r;
-            l.vx = l.vy = l.vz = 0;
-          } else {
-            l.y = 0.15; // resting near ground
+        const source=nearbySources[i%nearbySources.length],sx=source.x-center.x,sy=source.y-center.y,sz=source.z-center.z;
+        const l=this.leafData[i];
+        const place=(ground:boolean)=>{
+          const angle=hash(i+source.key,1201)*Math.PI*2;
+          const radius=source.radius*(.18+hash(i+source.key,1202)*1.28);
+          l.x=sx+Math.cos(angle)*radius;
+          l.z=sz+Math.sin(angle)*radius;
+          l.y=ground?.13:sy+(-.38+hash(i+source.key,1203)*.9)*source.radius;
+          l.vx=l.vy=l.vz=0;l.sourceKey=source.key;l.settled=ground;l.settledTime=0;
+        };
+        if(l.sourceKey!==source.key)place(false);
+        l.phase+=dt*(1.8+l.scale);
+        if(l.settled){
+          l.settledTime+=dt;
+          if(l.settledTime>7+hash(i,1204)*8)place(false);
+        }else{
+          const flutterX=Math.sin(l.phase*1.5)*1.15+windX*1.1;
+          const flutterZ=Math.cos(l.phase*1.2)*.95+windZ*.95;
+          const fallRate=1.4*(.8+l.scale*.4);
+          const distToCar=Math.hypot(l.x,l.z);
+          if(distToCar<6.8&&Math.abs(carSpeed)>3){
+            const wakeFactor=(1-distToCar/6.8)*Math.min(Math.abs(carSpeed)*.35,12),pushAngle=Math.atan2(l.x,l.z);
+            l.vx+=Math.sin(pushAngle)*wakeFactor*1.8;
+            l.vz+=Math.cos(pushAngle)*wakeFactor-Math.sign(carSpeed)*wakeFactor*.6;
+            l.vy+=wakeFactor*.8;
+            const jitter=hash(i,1205)-.5;l.rotSpeedX+=jitter*wakeFactor*3;l.rotSpeedY-=jitter*wakeFactor*2;
           }
+          l.x+=(flutterX+l.vx)*dt;l.y+=(-fallRate+l.vy)*dt;l.z+=(flutterZ+l.vz-carSpeed*.4)*dt;
+          l.vx*=1-2.5*dt;l.vy*=1-2.8*dt;l.vz*=1-2.5*dt;
+          if(l.y<.13){
+            l.y=.13;l.x=lerp(l.x,sx,.12);l.z=lerp(l.z,sz,.12);l.settled=true;l.settledTime=0;
+          }else if(Math.hypot(l.x-sx,l.z-sz)>source.radius*2.8){place(false);}
         }
-
-        // Wrap around player radius
-        if (l.x < -40) l.x += 80; if (l.x > 40) l.x -= 80;
-        if (l.z < -40) l.z += 80; if (l.z > 40) l.z -= 80;
-
-        // Set Instanced Transformation
-        this.leafDummy.position.set(l.x, l.y, l.z);
-        this.leafDummy.rotation.set(l.rotX, l.rotY, l.rotZ);
-        this.leafDummy.scale.set(l.scale, l.scale, l.scale);
-        this.leafDummy.updateMatrix();
-        this.leafMesh.setMatrixAt(i, this.leafDummy.matrix);
+        l.rotX+=(l.rotSpeedX+Math.sin(l.phase)*1.8)*dt;
+        l.rotY+=(l.rotSpeedY+Math.cos(l.phase*.8)*1.5)*dt;
+        l.rotZ+=l.rotSpeedZ*dt;
+        this.leafDummy.position.set(l.x,l.y,l.z);this.leafDummy.rotation.set(l.rotX,l.rotY,l.rotZ);this.leafDummy.scale.set(l.scale,l.scale,l.scale);this.leafDummy.updateMatrix();this.leafMesh.setMatrixAt(i,this.leafDummy.matrix);
       }
-
-      this.leafMesh.instanceMatrix.needsUpdate = true;
+      this.leafMesh.instanceMatrix.needsUpdate=true;
     }
 
     // ----------------------------------------------------

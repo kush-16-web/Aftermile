@@ -7,13 +7,18 @@ import { terrainLayers } from '../road/Landscape.ts';
 import { treePlacements, vistaWeight } from './Composition.ts';
 import { WorldAssetLibrary } from './WorldAssetLibrary.ts';
 
+export interface LeafSource {
+  x:number;y:number;z:number;
+  radius:number;load:number;key:number;
+}
+
 export class WorldChunk {
   group = new THREE.Group();
   owned: THREE.BufferGeometry[] = [];
   textures: THREE.Texture[] = [];
   ownedMaterials: THREE.Material[] = [];
   start: number;
-  assetReady=false;leafDensity=0;
+  assetReady=false;leafDensity=0;leafSources:LeafSource[]=[];
 
   constructor(public index: number, public road: Road, public m: Materials, vegetation = 1, public assets?:WorldAssetLibrary) {
     this.start = index * CHUNK;
@@ -258,11 +263,29 @@ export class WorldChunk {
     const vista = vistaWeight(road, mid);
     for (const tree of treePlacements(road, this.start, this.start + CHUNK)) {
       const pos = groundPoint(tree.s, tree.offset);
-      this.leafDensity=Math.max(this.leafDensity,Math.max(0,1-Math.abs(tree.offset)/160)*.15);
+      this.leafDensity=Math.max(this.leafDensity,Math.max(0,1-Math.abs(tree.offset)/190)*tree.leafLoad*.24);
+      this.leafSources.push({
+        x:pos.x,y:pos.y+tree.height*.78,z:pos.z,
+        radius:tree.canopyRadius,load:tree.leafLoad,
+        key:Math.round(tree.s*10)+Math.round(tree.offset),
+      });
       const kind=tree.pine?'pine':'tree';
-      if(this.assets?.add(batch,kind,'vegetation',pos.x,pos.y,pos.z,tree.height/(tree.pine?12:8),tree.rotation))continue;
+      if(this.assets?.add(batch,kind,'vegetation',pos.x,pos.y,pos.z,tree.height/(tree.pine?23:17),tree.rotation))continue;
       batch.add('trunk',m.cylinder,m.bark,pos.x,pos.y+tree.height*.4,pos.z,.24,tree.height*.8,.24);
       batch.add('leaf',tree.pine?m.cone:m.leafShape,tree.pine?m.pine:m.leaf,pos.x,pos.y+tree.height*.7,pos.z,3.2,tree.height*.6,3.2,tree.rotation);
+
+      // Settled autumn litter is anchored to the same broadleaf source as the
+      // airborne system. A few deterministic patches keep shoulders readable
+      // without carpeting the entire road.
+      if(!tree.pine){
+        const patchCount=3+Math.floor(tree.leafLoad*5);
+        for(let patch=0;patch<patchCount;patch++){
+          const angle=random()*Math.PI*2, radius=(.35+random()*1.25)*tree.canopyRadius;
+          const patchS=tree.s+Math.cos(angle)*radius,patchO=tree.offset+Math.sin(angle)*radius;
+          const patchPos=groundPoint(patchS,patchO);
+          batch.add('fallen-leaf',m.leafGroundShape,m.leaf,patchPos.x,patchPos.y+.018,patchPos.z,.45+random()*.55,.45+random()*.55,.45+random()*.55,random()*Math.PI*2,-Math.PI/2);
+        }
+      }
     }
 
     // Low, deterministic ground cover gives the terrain scale without filling
@@ -276,7 +299,7 @@ export class WorldChunk {
       if (pos.y < 8) continue;
       const bush = random() > 0.94 && vista < .4, assetKind = bush ? 'bush' : 'grass';
       const scale = bush ? 0.65 + random() * 0.65 : 0.8 + random() * 0.7;
-      if (!bush && i % 3 === 0) batch.add('mid-grass',m.grassShape,m.grass,pos.x,pos.y,pos.z,scale,scale,scale,random()*Math.PI*2);
+      if (!bush && i % 3 === 0 && !this.assets?.has('grass')) batch.add('mid-grass',m.grassShape,m.grass,pos.x,pos.y,pos.z,scale,scale,scale,random()*Math.PI*2);
       if (this.assets?.add(batch, assetKind, 'ground-cover', pos.x, pos.y, pos.z, scale, random() * Math.PI * 2)) continue;
       batch.add('ground-cover', m.grassShape, bush ? m.leaf : m.grass, pos.x, pos.y, pos.z, scale, scale, scale, random() * Math.PI * 2);
     }

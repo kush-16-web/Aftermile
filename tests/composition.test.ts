@@ -10,6 +10,9 @@ test('groves keep deterministic chunk seams, open vistas and road exclusion',()=
   for(let s=0;s<24000;s+=160)streamed.push(...treePlacements(road,s,s+160));
   assert.deepEqual([...streamed].sort((a,b)=>a.s-b.s),[...all].sort((a,b)=>a.s-b.s));
   assert.ok(all.length>40&&all.length<250,'sparse landscape rather than object noise');
+  assert.ok(Math.min(...all.map(t=>t.height))>=14,'trees read at mature scale');
+  assert.ok(Math.max(...all.map(t=>t.height))>=22,'pine landmarks reach the far horizon');
+  assert.ok(all.some(t=>Math.abs(t.offset)<130)&&all.some(t=>Math.abs(t.offset)>140),'groves layer from shoulder to field edge');
   assert.equal(treePlacements(road,0,800).length,0,'open meadow spawn');
   assert.equal(treePlacements(road,5800,6200).length,0,'crest panorama stays clear');
   assert.ok(vistaWeight(road,6000)>.99);

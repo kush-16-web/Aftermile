@@ -39,8 +39,10 @@ Fresh settings open in Autumn Evening. Changing the environment changes the atmo
 
 - 1.2 km straight sections, alternating large sweeps, broad S progressions and gentle C2 climbs/descents.
 - Inland meadow opening, rolling countryside, open crest panoramas and a gradual ocean approach.
-- Sparse groups of 3–8 trees and clear sightlines through large fields.
-- Layered grass detail: instanced near clumps, inexpensive mid cards, coherent far terrain color/noise.
+- Sparse mature groves with shoulder and field-edge layers, plus clear sightlines through large fields.
+- Layered grass detail: textured instanced near clumps, a procedural fallback mid tier, and coherent far terrain color/noise.
+- Autumn leaf silhouettes originate at tree canopies, drift with wind and vehicle wake, settle below their source trees, and recycle within a bounded pool.
+- Macro landforms use broad asymmetric ridges so the road reads through an open/mid/enclosed composition chapter rather than a row of small hills.
 - Graded shoulders and terrain material layers through grass, rock, sand, wet beach and water.
 - Coast geometry follows one continuous shoreline, with sky reflection and atmospheric haze.
 - Bounded streaming, one chunk per frame after startup, shared instanced assets and distance/frustum culling.

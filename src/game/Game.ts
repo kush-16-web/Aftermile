@@ -362,7 +362,7 @@ export class Game {
     this.life.onBirdNearby = (pan: number) => {
       if (this.screen === 'playing') this.audio.birdCall(0.04, pan);
     };
-    this.particles.update(dt,this.cinematicTime,this.position,w,s.particles,inTunnel,this.car.speed,this.car.lateralVelocity,this.car.slip,this.world.leafDensity);
+    this.particles.update(dt,this.cinematicTime,this.position,w,s.particles,inTunnel,this.car.speed,this.car.lateralVelocity,this.car.slip,this.world.leafDensity,this.world.leafSources);
     this.world.materials.update(w.wet,w.snow,w.autumn,this.sky.night,s.reflections,signalState(this.time),this.cinematicTime,w.wind);this.season.snow.value=w.snow;this.season.autumn.value=w.autumn;
     const wWeights=this.road.weights(this.car.s);
     const waterProximity=Math.max(0,Math.min(1,Math.max(wWeights.bridge*1.0,wWeights.coast*0.92,this.road.isBridge(this.car.s)?1.0:0)));

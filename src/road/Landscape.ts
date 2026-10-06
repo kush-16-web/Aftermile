@@ -41,12 +41,18 @@ export function landscapeHeight(road:Road,s:number,offset:number,landscapeFrame=
   if(distance<=CORRIDOR_HALF)return level-.055;
   const sample=coastalSample(road,s,offset,landscapeFrame);
   const w=road.weights(s),clearance=distance-CORRIDOR_HALF;
-  const macro=landscapeNoise(sample.worldS/1700,sample.x/1300,seed+31);
-  const ridge=1-Math.abs(landscapeNoise(sample.worldS/2400,sample.x/900,seed+127)*2-1);
-  const middle=landscapeNoise(sample.worldS/330,sample.x/280,seed+53)-.5;
-  const small=(landscapeNoise(sample.worldS/57,sample.x/63,seed+97)-.5)*3.5;
-  const far=smooth((distance-90)/650);
-  const natural=15+macro*55+ridge*ridge*160*far+middle*18+small*(1-far);
+  // The first sightline is a broad meadow. Large landforms are deliberately
+  // low-frequency and begin well away from the shoulder, while a restrained
+  // middle layer keeps the near field readable without producing a picket
+  // fence of small hills beside the road.
+  const macro=landscapeNoise(sample.worldS/2600,sample.x/1800,seed+31);
+  const ridge=1-Math.abs(landscapeNoise(sample.worldS/3600,sample.x/1500,seed+127)*2-1);
+  const middle=landscapeNoise(sample.worldS/850,sample.x/620,seed+53)-.5;
+  const small=landscapeNoise(sample.worldS/120,sample.x/140,seed+97)-.5;
+  const far=smooth((distance-260)/900);
+  const opening=1-smooth((sample.worldS-1200)/4200);
+  const landform=far*lerp(.34,1,1-opening);
+  const natural=15+macro*45+ridge*ridge*120*landform+middle*12+small*1.8*(1-far);
   // A graded cut/fill corridor constrains near-road relief, with a zero-slope
   // shoulder transition. Distant macro shape is independent of chunk borders.
   const delta=clamp(natural-level,-clearance*.42,clearance*.58);
