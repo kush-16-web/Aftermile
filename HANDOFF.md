@@ -6,7 +6,7 @@ Updated 2026-10-06. Read `PROJECT_CONTEXT.md` first. This checkpoint follows the
 
 - Branch: `main`, repository https://github.com/kush-16-web/Aftermile.git.
 - Pushed implementation before this pass: `014e08ea489b019c56d78e1103bd3a355f6f035c`.
-- Local vegetation checkpoint: `5b67f91` (`fix(world): reset hidden leaf emitters`, on top of `4799ec3`). The GitHub write connector temporarily rejected the push at its automatic usage limit; retry `git push origin main` or the connector tree/commit flow when it is available.
+- Local vegetation checkpoint: `5b67f91` (`fix(world): reset hidden leaf emitters`, on top of `4799ec3`). It is now published to GitHub `main` as connector commit `adbcb609d6f405371579af216a4d6810235e739f`.
 - Earlier pushed checkpoints: `9550bbbbc87cf7b4570b65fe885e08575273556f` (CC0 asset pipeline), `8bfa6ca37853ce4a93a202ca4a0adfabace410b6` (environment/time/sky).
 - Site source checkpoint: `05be567e5b9910917181d28b4e1092f674aa1cfd`.
 - Private Site deployment for this pass succeeded as version `appgprj_6ab7a4ca14e881918ebf5e7aece99939~appgver_cdb9081f819c8191a738f19a4b4e586c`, deployment `appgdep_6ac4bcc4f2548191a1dffca8e0d7a19a`.
@@ -63,7 +63,7 @@ Personally inspect Autumn Evening at spawn, broad bends, the ~6 km crest and lon
 
 ## Exact next steps
 
-1. Push local `4799ec3` to `main` once the GitHub write limit clears, then sync the Site source and deploy a new private version.
+1. Pull GitHub `main` at `adbcb609d6f405371579af216a4d6810235e739f` before continuing, then sync any later source changes to the private Site.
 2. Playtest Autumn Evening at spawn, the first crest and the 18 km coast approach; also sample Snowfall and Live time/weather. Inspect tree scale, grass readability, open/enclosed chapter contrast, canopy leaves and frame pacing.
 3. Address only confirmed world/environment defects while preserving the accepted driving foundation. Run `npm test`, `npm run typecheck` and `npm run build` before each checkpoint.
 4. Future scope may include rivers/streams, ravines, small/elevated/coastal bridges, rural crossings and junctions that respond to actual geography. None were started in this pass.
