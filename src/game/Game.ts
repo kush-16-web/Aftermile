@@ -16,6 +16,7 @@ import { CameraController, cameraNames } from '../vehicle/CameraController.ts';
 import { InputManager } from '../core/InputManager.ts';
 import { Settings, GRAPHICS } from '../systems/Settings.ts';
 import type { SettingsData } from '../systems/Settings.ts';
+import { ENVIRONMENT_TIMES } from '../weather/Environment.ts';
 import { Weather } from '../weather/Weather.ts';
 import { Particles } from '../weather/Particles.ts';
 import { Sky } from '../sky/Sky.ts';
@@ -189,7 +190,7 @@ export class Game {
     this.companion = new Companion(this.ui.companionCanvas);
     this.weather.onChange = () => { this.settings.data.weather = this.weather.mode; };
     const weather = this.settings.data.weather;
-    this.weather.set(weather === 'live' ? 'clear' : weather);
+    this.weather.set(weather);
     if (weather === 'live') this.ui.toast('Choose a city to reconnect live weather.');
     this.cameras.mode = this.settings.data.camera;
     this.applyGraphics();
@@ -300,7 +301,8 @@ export class Game {
     if(!(key in this.settings.data)||typeof value!==typeof this.settings.data[key])return;
     (this.settings.data as any)[key]=value;
     if(key==='quality')Object.assign(this.settings.data,GRAPHICS[this.settings.data.quality]);
-    if(key==='weather'){this.weather.set(this.settings.data.weather);if(value==='live'&&!this.weather.city)this.ui.toast('Choose a city or use your location.');}
+    if(key==='environmentTime'){this.settings.data.timeMode='manual';this.settings.data.hour=ENVIRONMENT_TIMES[this.settings.data.environmentTime];}
+    if(key==='weather'){this.settings.data.timeMode=value==='live'?'real':'manual';if(value!=='live')this.settings.data.hour=ENVIRONMENT_TIMES[this.settings.data.environmentTime];this.weather.set(this.settings.data.weather);if(value==='live'&&!this.weather.city)this.ui.toast('Choose a city or use your location.');}
     if(key==='camera'){const prev = this.cameras.mode; this.cameras.mode=this.settings.data.camera;this.cameras.onModeChanged(prev);this.hero.setCameraMode(this.cameras.mode);}
     if(['navVoice','navVoiceVolume','navVoiceId'].includes(key)){
       this.navVoice.setSettings(this.settings.data.navVoice, this.settings.data.navVoiceVolume, this.settings.data.navVoiceId);
@@ -353,7 +355,7 @@ export class Game {
       this.debugCockpitQuat.copy(this.camera.quaternion);
     }
     const inTunnel=this.road.isTunnel(this.car.s);
-    this.sky.update(moving?dt:0,this.cinematicTime,this.camera,this.position,w,s.timeMode,s.hour,this.weather.mode==='live'?this.weather.city?.timezone:undefined,s.reducedFlashes);
+    this.sky.update(moving?dt:0,this.cinematicTime,this.camera,this.position,w,s.timeMode,s.hour,this.weather.mode==='live'?this.weather.city?.timezone:undefined,s.reducedFlashes,this.weather.mode,s.environmentTime);
     const sunDir = this.sky.sun.position.clone().sub(this.position).normalize();
     this.water.update(this.cinematicTime,this.position.z,this.sky.night,w.cloud,this.scene.fog as THREE.FogExp2,w.storm,this.sky.hour,sunDir);
     this.life.update(this.time,this.car.s,origin,this.sky.night < 0.6,w.storm > 0.4 || w.wet > 0.7);

@@ -10,8 +10,8 @@ export const PRESETS:Record<string,WeatherState>={
   rain:{wet:.65,snow:0,cloud:.88,fog:.35,wind:22,temperature:17,autumn:0,storm:0},
   heavy:{wet:.95,snow:0,cloud:.97,fog:.57,wind:32,temperature:16,autumn:0,storm:.12},
   storm:{wet:1,snow:0,cloud:1,fog:.61,wind:48,temperature:19,autumn:0,storm:1},
-  snow:{wet:0,snow:1,cloud:.83,fog:.45,wind:13,temperature:-3,autumn:0,storm:0},
-  autumn:{wet:0,snow:0,cloud:.25,fog:.13,wind:25,temperature:15,autumn:1,storm:0},
+  snow:{wet:0,snow:1,cloud:.87,fog:.25,wind:13,temperature:-3,autumn:0,storm:0},
+  autumn:{wet:0,snow:0,cloud:.20,fog:.06,wind:12,temperature:15,autumn:1,storm:0},
 };
 export function modeFromCode(c:number):WeatherMode {
   if(c>=95)return 'storm';if((c>=71&&c<=77)||c===85||c===86)return 'snow';
@@ -22,20 +22,21 @@ export function lunarPhase(date:Date) {const days=(date.getTime()-Date.UTC(2000,
 export function moonLabel(phase:number) {
   if(phase<.025||phase>.975)return 'New moon';if(phase<.23)return 'Waxing crescent';if(phase<.27)return 'First quarter';if(phase<.475)return 'Waxing gibbous';if(phase<.525)return 'Full moon';if(phase<.73)return 'Waning gibbous';if(phase<.77)return 'Last quarter';return 'Waning crescent';
 }
-export const weatherNames:Record<WeatherMode,string>={clear:'Clear skies',partly:'Partly cloudy',overcast:'Overcast',fog:'Low fog',rain:'Rain',heavy:'Heavy rain',storm:'Thunderstorm',snow:'Snowfall',autumn:'Autumn wind',random:'Changing skies',live:'Live weather'};
+export const weatherNames:Record<WeatherMode,string>={clear:'Clear skies',partly:'Partly cloudy',overcast:'Overcast',fog:'Low fog',rain:'Rain',heavy:'Heavy rain',storm:'Thunderstorm',snow:'Snowfall',autumn:'Autumn',random:'Changing skies',live:'Live weather'};
 export class Weather {
   mode:WeatherMode='clear';condition:WeatherMode='clear';current={...PRESETS.clear};target={...PRESETS.clear};
   city:City|null=null;status='Simulation';lastFetch=0;lastFetchedAt=0;randomTimer=120;generation=0;pending=false;
   onChange:()=>void=()=>{};
   set(mode:WeatherMode) {
     this.mode=mode;
+    if(mode==='live')this.status=this.city?'Live · last conditions kept':'Choose a city · local clock active';
     if(mode!=='live'){this.generation++;this.pending=false;this.status='Simulation';this.condition=mode==='random'?'partly':mode;this.target={...PRESETS[this.condition]};}
     this.onChange();
   }
   update(dt:number) {
     for(const k of Object.keys(this.current) as (keyof WeatherState)[])this.current[k]=damp(this.current[k],this.target[k],.22,dt);
     if(this.mode==='random') {this.randomTimer-=dt;if(this.randomTimer<=0){const options=['clear','partly','rain','fog','autumn'] as const;this.condition=options[Math.floor(Math.random()*options.length)];this.target={...PRESETS[this.condition]};this.randomTimer=150+Math.random()*160;this.onChange();}}
-    if(this.mode==='live'&&this.city&&!this.pending&&Date.now()-this.lastFetch>900000)void this.fetchCity(this.city);
+    if(this.mode==='live'&&this.city&&!this.pending&&Date.now()-this.lastFetch>900000)void this.fetchCity(this.city).catch(()=>{});
   }
   async search(query:string):Promise<City[]> {
     const data=await request(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query.trim())}&count=6&language=en&format=json`);
@@ -60,7 +61,7 @@ export class Weather {
     }catch(error) {
       if(token!==this.generation)return;
       this.status=this.lastFetchedAt?'Weather unavailable · last conditions kept':'Weather unavailable · simulation active';
-      if(!this.lastFetchedAt){this.mode='clear';this.condition='clear';this.target={...PRESETS.clear};}
+      if(!this.lastFetchedAt){this.condition='clear';this.target={...PRESETS.clear};}
       throw error;
     }finally{if(token===this.generation){this.pending=false;this.onChange();}}
   }

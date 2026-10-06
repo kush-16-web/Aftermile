@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { clamp, damp, lerp } from '../core/math.ts';
+import { atmosphere, skyKeyframe, starVisibility } from '../weather/Environment.ts';
+import type { EnvironmentTime } from '../weather/Environment.ts';
 import { lunarPhase } from '../weather/Weather.ts';
 import type { WeatherState } from '../weather/Weather.ts';
 
@@ -30,6 +32,7 @@ export class Sky {
         uCloud: { value: 0.1 },
         uStorm: { value: 0.0 },
         uNight: { value: 0 },
+        uStars: { value: 0 },
         uFlash: { value: 0 },
         uFog: { value: 0 },
         uRain: { value: 0 },
@@ -47,7 +50,7 @@ export class Sky {
         varying vec3 vWorldDir;
         uniform vec3 uTop, uMid, uHorizon, uSun, uSunColor, uCamPos;
         uniform vec2 uWindVec;
-        uniform float uTime, uCloud, uStorm, uNight, uFlash, uFog, uRain;
+        uniform float uTime, uCloud, uStorm, uNight, uFlash, uFog, uRain, uStars;
 
         // Optimized procedural hashing & fractal noise
         float hash(vec2 p) {
@@ -100,7 +103,8 @@ export class Sky {
           // Low Cumulus / Heavy Storm Cloud Masses
           float nLow = fbm(worldLow * 1.6);
           float stormDensityBoost = uStorm * 0.38 + uRain * 0.22;
-          float cloudBaseDensity = smoothstep(1.12 - uCloud * 0.95 - stormDensityBoost, 0.88 - uCloud * 0.45, nLow);
+          float cloudThreshold = .82 - uCloud * .47 - stormDensityBoost;
+          float cloudBaseDensity = smoothstep(cloudThreshold, cloudThreshold + .18, nLow);
 
           // High Cirrus Deck
           float nHigh = fbm(worldHigh * 2.4);
@@ -143,17 +147,20 @@ export class Sky {
           skyBase = mix(skyBase, finalCloudCol, totalCloud * (0.88 + uCloud * 0.10 + uStorm * 0.08));
 
           // 5. Rich Evening & Night Starfield (Excludes Cloud Masses & Storm Haze)
-          vec3 starCoord = floor(d * 420.0);
+          vec3 starGrid = d * 320.0;
+          vec3 starCoord = floor(starGrid);
           float starHash = hash3(starCoord);
-          float starMag = step(0.9972, starHash);
-          vec3 starTone = mix(vec3(0.75, 0.88, 1.0), vec3(1.0, 0.92, 0.80), fract(starHash * 17.3));
-          float starTwinkle = 0.80 + 0.20 * sin(uTime * 3.5 + starHash * 30.0);
-          float horizonScattering = smoothstep(0.06, 0.35, d.y);
-          float sunGlowExclusion = 1.0 - smoothstep(0.20, 0.85, sunDot);
-          
-          float twilightFactor = clamp(uNight + smoothstep(0.12, -0.15, uSun.y) * 0.9, 0.0, 1.0);
-          float starVisibility = twilightFactor * (1.0 - totalCloud * 1.2) * (1.0 - uFog * 0.9) * (1.0 - uRain * 0.95) * horizonScattering * sunGlowExclusion;
-          skyBase += starTone * starMag * starTwinkle * starVisibility * 1.35;
+          float starMag = step(0.9975, starHash);
+          float variety = hash3(starCoord + 19.7);
+          vec3 starCenter = vec3(.5) + (vec3(hash3(starCoord+1.),hash3(starCoord+2.),hash3(starCoord+3.))-.5)*.45;
+          float radius = mix(.12, .32, variety * variety);
+          float edge = max(.035, length(fwidth(starGrid)) * .25);
+          float starShape = 1.0 - smoothstep(radius, radius + edge, length(fract(starGrid)-starCenter));
+          vec3 starTone = mix(vec3(.76,.85,1.),vec3(1.,.90,.76),hash3(starCoord+7.));
+          float starTwinkle = .98 + .02 * sin(uTime * .8 + starHash * 30.0);
+          float horizonScattering = smoothstep(.12,.55,d.y);
+          float starVisibility = uStars * max(0.,1.0-totalCloud*1.15) * horizonScattering;
+          skyBase += starTone * starMag * starShape * starTwinkle * starVisibility * (.12 + .72*variety*variety);
 
           // 6. Thunderstorm Lightning Illuminating Cloud Lobes & Ambient Sky
           float cloudLightningLobe = smoothstep(0.25, 0.80, fbm(worldLow * 2.8 + vec2(19.2, 34.7)));
@@ -241,7 +248,9 @@ export class Sky {
     mode: string,
     manualHour: number,
     timezone?: string,
-    reduced = false
+    reduced = false,
+    theme = 'live',
+    preset: EnvironmentTime = 'evening'
   ) {
     // 1. Time Mode Evaluation
     if (mode === 'real') {
@@ -269,63 +278,13 @@ export class Sky {
 
     const sunDir = new THREE.Vector3(sunAzimuthX, Math.max(-0.2, sunElevation), sunAzimuthZ).normalize();
 
-    // 3. Time Phase Determination
-    this.night = clamp((-sunElevation + 0.08) * 3.5, 0, 1);
-
-    // 4. Atmospheric Sky Color Gradients
-    let skyZenith = new THREE.Color(0x0284c7);
-    let skyMid = new THREE.Color(0x38bdf8);
-    let skyHorizon = new THREE.Color(0xe0f2fe);
-    let sunLightColor = new THREE.Color(0xfff4e0);
-
-    if (this.hour >= 4.5 && this.hour < 7.0) {
-      // DAWN
-      const t = (this.hour - 4.5) / 2.5;
-      skyZenith = new THREE.Color(0x141838).lerp(new THREE.Color(0x1e3a8a), t);
-      skyMid = new THREE.Color(0x4a1d68).lerp(new THREE.Color(0x701a75), t);
-      skyHorizon = new THREE.Color(0xd946ef).lerp(new THREE.Color(0xfb923c), t);
-      sunLightColor = new THREE.Color(0xffb780);
-    } else if (this.hour >= 7.0 && this.hour < 11.5) {
-      // MORNING
-      const t = (this.hour - 7.0) / 4.5;
-      skyZenith = new THREE.Color(0x1e3a8a).lerp(new THREE.Color(0x0284c7), t);
-      skyMid = new THREE.Color(0x38bdf8).lerp(new THREE.Color(0x7dd3fc), t);
-      skyHorizon = new THREE.Color(0xbae6fd).lerp(new THREE.Color(0xe0f2fe), t);
-      sunLightColor = new THREE.Color(0xfff0db);
-    } else if (this.hour >= 11.5 && this.hour < 16.0) {
-      // NOON
-      skyZenith = new THREE.Color(0x0369a1);
-      skyMid = new THREE.Color(0x38bdf8);
-      skyHorizon = new THREE.Color(0xe0f2fe);
-      sunLightColor = new THREE.Color(0xfff8ee);
-    } else if (this.hour >= 16.0 && this.hour < 18.0) {
-      // AFTERNOON / GOLDEN HOUR
-      const t = (this.hour - 16.0) / 2.0;
-      skyZenith = new THREE.Color(0x0369a1).lerp(new THREE.Color(0x2e1065), t);
-      skyMid = new THREE.Color(0x38bdf8).lerp(new THREE.Color(0x86198f), t);
-      skyHorizon = new THREE.Color(0xe0f2fe).lerp(new THREE.Color(0xf59e0b), t);
-      sunLightColor = new THREE.Color(0xffa726);
-    } else if (this.hour >= 18.0 && this.hour < 19.8) {
-      // AUTUMN EVENING & SUNSET
-      const t = (this.hour - 18.0) / 1.8;
-      skyZenith = new THREE.Color(0x241442).lerp(new THREE.Color(0x130e2b), t);
-      skyMid = new THREE.Color(0x831843).lerp(new THREE.Color(0x581c87), t);
-      skyHorizon = new THREE.Color(0xf97316).lerp(new THREE.Color(0xec4899), t);
-      sunLightColor = new THREE.Color(0xff8c42);
-    } else if (this.hour >= 19.8 && this.hour < 21.2) {
-      // BLUE HOUR / DUSK
-      const t = (this.hour - 19.8) / 1.4;
-      skyZenith = new THREE.Color(0x0f172a).lerp(new THREE.Color(0x030712), t);
-      skyMid = new THREE.Color(0x312e81).lerp(new THREE.Color(0x1e1b4b), t);
-      skyHorizon = new THREE.Color(0x4338ca).lerp(new THREE.Color(0x111827), t);
-      sunLightColor = new THREE.Color(0x818cf8);
-    } else {
-      // NIGHT
-      skyZenith = new THREE.Color(0x040711);
-      skyMid = new THREE.Color(0x0a1020);
-      skyHorizon = new THREE.Color(0x101726);
-      sunLightColor = new THREE.Color(0x94a3b8);
-    }
+    const state = atmosphere(this.hour, weather);
+    this.night = state.night;
+    const {a, b, blend} = skyKeyframe(this.hour);
+    const skyZenith = new THREE.Color(a.top).lerp(new THREE.Color(b.top), blend);
+    const skyMid = new THREE.Color(a.mid).lerp(new THREE.Color(b.mid), blend);
+    const skyHorizon = new THREE.Color(a.horizon).lerp(new THREE.Color(b.horizon), blend);
+    const sunLightColor = new THREE.Color(a.sun).lerp(new THREE.Color(b.sun), blend);
 
     // 5. Heavy Thunderstorm & Overcast Modifications (Dark, moody, high-contrast storm system)
     if (weather.cloud > 0.3 || weather.storm > 0.1 || weather.wet > 0.3) {
@@ -342,16 +301,11 @@ export class Sky {
     }
 
     if (weather.snow > 0.1) {
-      const snowZenith = new THREE.Color(0x0f172a).lerp(new THREE.Color(0x334155), 1 - this.night);
-      const snowHorizon = new THREE.Color(0x475569).lerp(new THREE.Color(0x64748b), 1 - this.night);
+      const snowZenith = new THREE.Color(0x0f172a).lerp(new THREE.Color(0x8999ae), 1 - this.night);
+      const snowHorizon = new THREE.Color(0x475569).lerp(new THREE.Color(0xc5cbd0), 1 - this.night);
       skyZenith.lerp(snowZenith, weather.snow * 0.8);
       skyMid.lerp(snowHorizon, weather.snow * 0.8);
       skyHorizon.lerp(snowHorizon, weather.snow * 0.8);
-    }
-
-    if (weather.autumn > 0.1 && this.night < 0.7 && weather.storm < 0.3) {
-      skyMid.lerp(new THREE.Color(0x831843), weather.autumn * 0.4);
-      skyHorizon.lerp(new THREE.Color(0xd97706), weather.autumn * 0.45);
     }
 
     if (weather.fog > 0.2) {
@@ -370,6 +324,7 @@ export class Sky {
     this.skyMaterial.uniforms.uCloud.value = weather.cloud;
     this.skyMaterial.uniforms.uStorm.value = weather.storm;
     this.skyMaterial.uniforms.uNight.value = this.night;
+    this.skyMaterial.uniforms.uStars.value = starVisibility(this.hour, theme, preset, weather.cloud, weather.fog, weather.snow);
     this.skyMaterial.uniforms.uFog.value = weather.fog;
     this.skyMaterial.uniforms.uRain.value = weather.wet;
     this.skyMaterial.uniforms.uCamPos.value.copy(camera.position);
@@ -387,9 +342,7 @@ export class Sky {
 
     // In thunderstorms and heavy cloud cover, direct sun is strongly occluded while preserving ambient visibility
     const cloudAtten = clamp(1.0 - weather.cloud * 0.72 - weather.storm * 0.45 - weather.wet * 0.3, 0.05, 1.0);
-    const baseSunIntensity = (1.0 - this.night) * 2.8 * cloudAtten * (1.0 - weather.fog * 0.5);
-    const moonlightIntensity = this.night * 0.22 * (1.0 - weather.cloud * 0.7);
-    this.sun.intensity = baseSunIntensity + moonlightIntensity;
+    this.sun.intensity = state.sunIntensity;
     this.sun.color.copy(this.night > 0.6 ? new THREE.Color(0x93c5fd) : sunLightColor);
 
     // 8. Ambient Hemisphere Light (Preserves comfortable world visibility during daytime storms)
@@ -397,12 +350,13 @@ export class Sky {
     const groundHemi = new THREE.Color(0x282a32).lerp(new THREE.Color(0x06080d), this.night);
     this.ambient.color.copy(skyHemi);
     this.ambient.groundColor.copy(groundHemi);
-    this.ambient.intensity = 1.15 * (1.0 - this.night * 0.7) * (1.0 - weather.cloud * 0.3) + this.night * 0.35 + (weather.storm > 0.3 ? 0.25 : 0);
+    this.ambient.intensity = state.ambientIntensity;
+    this.scene.environmentIntensity = .08 + (1 - this.night) * .38;
 
     // 9. Atmospheric Fog Density & Color
     const fog = this.scene.fog as THREE.FogExp2;
     fog.color.copy(skyHorizon);
-    fog.density = 0.00065 + weather.fog * 0.0055 + weather.wet * 0.0016 + weather.storm * 0.0018 + weather.snow * 0.0015;
+    fog.density = state.fogDensity;
 
     // 10. Moon Position & Material
     const moonAngle = solarAngle + Math.PI;

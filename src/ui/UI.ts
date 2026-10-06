@@ -1,6 +1,8 @@
 import type { Settings, SettingsData } from '../systems/Settings.ts';
 import type { City, WeatherMode } from '../weather/Weather.ts';
 import { weatherNames, moonLabel, lunarPhase } from '../weather/Weather.ts';
+import { ENVIRONMENTS, ENVIRONMENT_TIMES } from '../weather/Environment.ts';
+import type { EnvironmentTime } from '../weather/Environment.ts';
 import { cameraNames } from '../vehicle/CameraController.ts';
 import { getAllVehicles, getVehicleConfig } from '../vehicle/VehicleRegistry.ts';
 import type { VehicleConfig } from '../vehicle/VehicleConfig.ts';
@@ -954,15 +956,12 @@ export class UI {
       `;
       this.bindWorldEvents();
     } else if (type === 'weather') {
-      const weathers: WeatherMode[] = ['clear', 'partly', 'overcast', 'fog', 'rain', 'heavy', 'storm', 'snow', 'autumn'];
+      const weathers = ENVIRONMENTS;
       const times = [
-        { id: 'dawn', label: 'Dawn', sub: '05:30' },
-        { id: 'morning', label: 'Morning', sub: '08:30' },
-        { id: 'noon', label: 'Noon', sub: '12:00' },
-        { id: 'golden', label: 'Golden Hour', sub: '17:45' },
-        { id: 'evening', label: 'Evening', sub: '19:30' },
-        { id: 'night', label: 'Night', sub: '23:00' },
-        { id: 'real', label: 'Real Time', sub: 'Live Clock' }
+        { id: 'morning', label: 'Morning', sub: 'Soft daylight' },
+        { id: 'noon', label: 'Noon', sub: 'Open sky' },
+        { id: 'evening', label: 'Evening', sub: 'Sunset & early stars' },
+        { id: 'night', label: 'Night', sub: 'After dark' },
       ];
 
       viewport.innerHTML = `
@@ -987,10 +986,11 @@ export class UI {
             </div>
 
             <div class="weather-col">
-              <span class="section-label">TIME OF DAY</span>
-              <div class="choice-list">
+              <span class="section-label">${data.weather === 'live' ? 'LIVE CLOCK' : 'TIME OF DAY'}</span>
+              ${data.weather === 'live' ? '<p class="floating-subtitle">Weather and local time follow your selected city. Without a city, conditions are a simulation.</p><button class="choice-item" id="environment-city">Choose a city</button>' : ''}
+              <div class="choice-list" ${data.weather === 'live' ? 'hidden' : ''}>
                 ${times.map(t => `
-                  <button class="choice-item ${data.timeMode === t.id ? 'active' : ''}" data-time="${t.id}">
+                  <button class="choice-item ${data.environmentTime === t.id ? 'active' : ''}" data-time="${t.id}">
                     <span class="item-icon">${timeSvg(t.id)}</span>
                     <span class="item-name">${t.label}</span>
                     <small class="item-sub">${t.sub}</small>
@@ -1230,14 +1230,15 @@ export class UI {
       btn.addEventListener('click', () => {
         const w = btn.dataset.weather as WeatherMode;
         this.actions.setting('weather', w);
-        viewport.querySelectorAll('[data-weather]').forEach(b => b.classList.toggle('active', b === btn));
+        this.renderActiveOverlay();
       });
     });
 
+    viewport.querySelector('#environment-city')?.addEventListener('click', () => this.switchOverlay('world'));
     viewport.querySelectorAll<HTMLButtonElement>('[data-time]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const t = btn.dataset.time;
-        this.actions.setting('timeMode', t);
+        const t = btn.dataset.time as EnvironmentTime;
+        this.actions.setting('environmentTime', t);
         viewport.querySelectorAll('[data-time]').forEach(b => b.classList.toggle('active', b === btn));
       });
     });
