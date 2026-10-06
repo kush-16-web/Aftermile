@@ -1,101 +1,84 @@
 # Aftermile
 
-Aftermile is a cinematic browser driving game about taking the long way home. It streams a procedural road through coast, countryside, bridges, tunnels, city districts, and open plains while the player manages speed, fuel, weather, traffic, and a small road companion.
+Aftermile is a cinematic browser driving experience about taking the long way home: open fields, broad highways, rolling hills, changing skies and a coast you travel toward.
 
-The project is a standalone Three.js game. It grew from the mood and feature ideas in the original Spider Midnight extension, but it has its own runtime, world generation, physics, and assets.
+Built with TypeScript, Three.js and Vite. The accepted R34/BMW vehicle, handling, camera, audio, Garage and navigation foundations are preserved while the world develops around them.
 
-## Run it
+## Playtest
+
+[Open the private Aftermile test site](https://spider-midnight-drive.kush-09.chatgpt.site) using the owner's normal ChatGPT sign-in.
+
+The current pass is **World Themes + Scenic Road Foundation — First Push**. Start with **Autumn → Evening** in the Weather panel. The opening is inland; the first large crest is around route station 6 km (about 5.8 km from spawn), with the coast gradually becoming closer toward 18 km. Browser visuals and driving feel are ready for personal review.
+
+## Run locally
+
+Use Node.js 24 (the tested runtime) and npm.
 
 ```bash
 git clone https://github.com/kush-16-web/Aftermile.git
 cd Aftermile
-npm install
+npm ci
 npm run dev
 ```
 
-Open the Vite URL in a desktop browser with WebGL 2 and hardware acceleration enabled. Use `npm run build` followed by `npm run preview` for a production build. The core drive works without network access; live weather is optional and only runs after the player chooses a city or grants location access.
+Open **http://localhost:4173** in a desktop browser with WebGL 2 and hardware acceleration. For a production build, run `npm run build` and then `npm run preview`.
 
-The public source checkpoint excludes the supplied R34 binary while redistribution permission is unresolved. Restore the authorized prepared model at `public/models/r34/r34.glb` to drive and run the model tests. The existing private test Site retains that model; see [`HANDOFF.md`](HANDOFF.md).
+The core world works offline. Live Weather needs network access to Open-Meteo; a failed fetch keeps Live selected and clearly labels simulated conditions.
 
-## Vehicle foundation
+## Environments
 
-Pass 1.2 is an unfinished vehicle checkpoint; see [`HANDOFF.md`](HANDOFF.md) for exact status and continuation steps. The supplied Nissan Skyline R34 remains the hero vehicle. The original GLB is preserved outside the repository. A lossless runtime preparation step bakes the source transforms into the generic vehicle coordinate system, keeps all 266,060 triangles and embedded image data, and batches compatible static primitives so the runtime copy has 72 meshes and 85 nodes instead of 766 mesh primitives and 3,566 source nodes. No decimation or texture resampling was used.
+| Mode | Time and atmosphere |
+| --- | --- |
+| Live Weather | Existing city/location weather lookup, selected city's real local clock, continuous dusk/dawn stars and cloud suppression |
+| Autumn | Morning, Noon, Evening and Night; warm fields, varied sparse groves, restrained upper-sky evening stars |
+| Snowfall | The same four curated times; cold ground, snow on vegetation/rocks/shoulders, readable asphalt and heavy-cloud star suppression |
 
-The measured source asset contains separate front and rear wheel groups, separate calipers, exterior windows, a partial interior, real lamp surfaces, 37 source materials, 57 texture references, and 28 embedded images. The runtime copy retains the visible geometry and creates named material roles for the actual headlight surfaces, tail rings, brake strip, and clear reverse lens. The R34 asset audit is in [`docs/R34-asset-audit.md`](docs/R34-asset-audit.md); the generated runtime measurements are in [`public/models/r34/preparation.json`](public/models/r34/preparation.json).
+Fresh settings open in Autumn Evening. Changing the environment changes the atmosphere and surface presentation while preserving the seeded road, terrain, tree clusters, vistas and coast.
 
-The vehicle system stays reusable:
+## Scenic world
 
-```text
-VehicleController
-├── VehicleConfig       reusable per-car definition and R34 tune
-├── VehicleInput        progressive keyboard filtering
-├── VehiclePhysics      dynamic bicycle handling and simplified collider
-├── PlayerVehicleModel  GLB loading, body suspension and wheel pivots
-├── VehicleLights       actual model materials plus two road-light spots
-├── VehicleAudio        layered RPM/load audio foundation
-└── CameraController    smooth chase and exterior camera modes
-```
+- 1.2 km straight sections, alternating large sweeps, broad S progressions and gentle C2 climbs/descents.
+- Inland meadow opening, rolling countryside, open crest panoramas and a gradual ocean approach.
+- Sparse groups of 3–8 trees and clear sightlines through large fields.
+- Layered grass detail: instanced near clumps, inexpensive mid cards, coherent far terrain color/noise.
+- Graded shoulders and terrain material layers through grass, rock, sand, wet beach and water.
+- Coast geometry follows one continuous shoreline, with sky reflection and atmospheric haze.
+- Bounded streaming, one chunk per frame after startup, shared instanced assets and distance/frustum culling.
 
-The R34 configuration includes mass, wheelbase, track, center of gravity, power, gearbox, AWD drive share, speed-dependent steering authority, tire grip, braking, suspension, camera offsets, vehicle-specific fuel consumption, and an audio profile. Fuel is calculated from distance, throttle load, speed, idle consumption, and the configured tank size rather than a timer constant.
-
-The audio graph supports seven recording bands with separate RPM/load crossfades, road noise, slip feedback, wind, tunnel reflection, and smooth release behavior. No usable legal engine recording set is supplied, so the engine is intentionally silent and marked `needs-recordings`; synthetic engine buzzing has been removed. Road, wind and slip noise remain. The exact recording requirements and verification limits are in [`docs/R34-audio.md`](docs/R34-audio.md).
+This first pass keeps bridge, river, crossing, station and city generation dormant. Those systems await the future geography-driven infrastructure pass.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| `W` / `↑` | Progressive throttle |
+| `W` / `↑` | Throttle |
 | `S` / `↓` | Brake; hold after stopping to reverse |
-| `A` / `D` / arrows | Progressive speed-sensitive steering |
-| `Space` | Rear-biased handbrake |
-| `C` | Chase, close chase, hood, roof, scenic cameras |
+| `A` / `D` / arrows | Steer |
+| `Space` | Handbrake |
+| `C` | Cycle cameras |
 | `L` | Headlights: auto / on / off |
-| `R` | Recover the car and reset damage |
-| `E` | Hold inside the cyan Night Owl bay to refuel |
+| `R` | Recover the car |
 | `Esc` | Pause/resume |
 | `H` | Hide/show instruments |
 | `M` | Mute/unmute |
 | Right mouse + drag | Look around |
-| `F2` | Development-only vehicle tuning panel |
 
-Numerical tests at 100 km/h produce a 3.81 m coasting lane change using 0.8 s D then 0.8 s A. Full-throttle correction and actual driving feel are still under review; this is not a completed acceptance claim. The world can still expose the previously known terrain, mountain, and water collision problems; those belong to the next Road + World Foundation pass.
-
-## World systems
-
-| System | Current behavior |
-| --- | --- |
-| Road | Seeded coast, countryside, bridge, city, tunnel, and plains regions |
-| Traffic | Pooled lane traffic with signals, queues, passing, and collision awareness; density remains configurable |
-| Fuel | Night Owl station interaction plus vehicle-specific tank and consumption model |
-| Weather | Clear, rain, storm, snow, autumn, and optional live city weather |
-| Sky | Manual or real-time sun, moon, clouds, fog, and lightning |
-| Assistant | Existing road/crash/situation warnings and region announcements remain in place |
-| Companion | HUD companion reacts to danger, fuel, weather, and clean driving |
-
-The vehicle pass intentionally does not redesign roads, terrain, cities, water, stations, NPCs, navigation, loading screens, or branding.
-
-## Performance
-
-The hero model is allowed a larger budget than traffic. The runtime R34 keeps its measured source triangles and textures while reducing hierarchy and draw-call overhead through lossless batching. The collider is a simple oriented box aligned with the authored wheelbase and body dimensions. The vehicle loop uses a fixed 120 Hz step, bounded substeps, pooled traffic, and no detailed render mesh for dynamic collisions. The renderer does not recreate lamp meshes every frame.
-
-## Verification
+## Validation and performance
 
 ```bash
-npm run typecheck
 npm test
+npm run typecheck
 npm run build
 ```
 
-The tests cover deterministic road continuity, long-drive finite physics, progressive steering from 10–160 km/h, the 100 km/h lane-change acceptance case, braking and reverse transitions, handbrake bounds, six minutes of repeated driving, 60/120 Hz agreement, vehicle-specific configuration isolation, the actual prepared R34 GLB, wheel contact and steering, lamp responses, triangle and draw-call cost, and chase-camera stability through an origin shift.
+The first-push checkpoint passes **102 checks**, including the existing vehicle, camera, Garage, audio and VFX regressions. World checks cover 100 km seeded route continuity, bounded grades/curves, corridor clearance, coast alignment, non-folding distant terrain, chunk streaming, grove seams and environment/star transitions.
 
-The managed preview environment used during development may have WebGL disabled. In that case it shows a clear WebGL requirement screen rather than a fake 2D drive. A normal desktop browser with WebGL 2 and hardware acceleration uses the full renderer.
+A CPU-only Node benchmark across eight route locations loaded all five environment assets, measured 149 chunk builds at approximately **4.9 ms median / 5.8 ms p95**, and retained at most **23 chunks** at medium range. These measurements exclude GPU rendering, vehicle/traffic draws and browser frame pacing; they are not a 60 FPS claim.
 
-## Asset and source notes
+## Assets and project context
 
-The R34 GLB was supplied for this project as a user attachment. Its original SHA-256 is recorded in the audit and preparation report. The source archive is not committed. The private Site checkout includes the prepared runtime copy; the public GitHub export excludes that binary. The attachment did not include a license statement for the model or its textures, so this repository does not claim a separate redistribution license for that asset.
+Five selected [Kenney Nature Kit](https://kenney.nl/assets/nature-kit) environment GLBs total 65,828 bytes and are **CC0 1.0**. They are normalized, instanced and use shared seasonal shaders. Sizes, geometry counts, runtime modifications, LOD and the shipped license are documented in [WORLD_ASSETS.md](WORLD_ASSETS.md).
 
-Aftermile source code is provided under the MIT terms in [`LICENSE`](LICENSE). The source and model asset terms are separate.
+Vehicle models were supplied for this project. Their asset terms are separate from the source license; no independent model redistribution license is asserted here. Existing R34 preparation/audit notes remain in `docs/` and `public/models/r34/`.
 
-## Deferred
-
-The next requested pass is Road + World Foundation: terrain and road intersections, mountain and water collision, curved highways, junctions, believable region spacing, world streaming, navigation data, and directional road signs. Full cockpit animation, controller rumble, authored music, advanced damage deformation, multiplayer, and additional cars remain later work.
+Aftermile source uses the MIT terms in [LICENSE](LICENSE). Read [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) first before making changes, then [HANDOFF.md](HANDOFF.md) for the exact checkpoint and continuation steps.

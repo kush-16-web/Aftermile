@@ -39,7 +39,7 @@
 # Development server (runs on http://localhost:4173)
 npm run dev
 
-# Run automated test suite (89 unit/system tests)
+# Run automated test suite (102 passing checks at the first-push checkpoint)
 npm test
 
 # TypeScript verification (strict type checking)
@@ -173,31 +173,21 @@ Road Assist is the single top-right contextual feedback area using lightweight v
 
 ## 9. WORLD — CURRENT STATE
 
-- **Road Splines (`src/road/Road.ts`)**: Procedural mathematical centerlines and elevation profiles driven by sinusoidal harmonics. Chunks are 160m long; regions are 2400m long across 6 biomes (`coast`, `country`, `bridge`, `city`, `tunnel`, `plains`).
-- **World Chunk Streaming (`src/world/WorldChunk.ts`)**: Chunks generated dynamically around player station $s$. Features asphalt surfaces, continuous guardrails, highway signs, and roadside service stations ("Horizon Fuel & Rest").
-- **Terrain**: *Prototype state.* Built from basic height formulas with simple elevation noise and vertex-colored grid meshes.
-- **Water (`src/world/Water.ts`)**: *Prototype state.* Planar surface with sinusoidal wave vertex displacement.
-- **Vegetation & Props**: *Prototype state.* Basic procedural boxes, spheres, and cylinders combined via instanced batches.
-- **Lighting & Atmosphere (`src/sky/Sky.ts`, `src/weather/Weather.ts`)**: Dynamic sun/moon celestial positions, Rayleigh/Mie atmospheric scattering, fog, precipitation, and seasonal color modulations.
+- **First-push scope:** Live Weather, Autumn and Snowfall over the same deterministic scenic world. Rivers, bridges, crossings, junctions, stations and cities are dormant; do not start infrastructure without the user's next instruction.
+- **Road (`Road.ts`, `RouteProfile.ts`):** 160 m chunks, 9.6 km regions, 4 km horizontal sections with 1.2 km straights and alternating broad seeded sweeps. Independent 3 km C2 elevation sections create an inland opening, roughly 6 km crest and long descent, followed by non-repeating seeded hills. Grades stay below 4.5% over the tested 100 km seeds. The accepted vehicle API and tuning are preserved.
+- **Streaming (`World.ts`, `Streaming.ts`):** Current corridor first; four chunks at startup, then one chunk per frame. Medium quality retains at most 23 chunks, roughly 2.6 km ahead and 960 m behind. Loaded assets replace fallback chunks one at a time in the same generation budget. Build/coverage stats are exposed.
+- **Terrain (`Landscape.ts`, `TerrainMaterial.ts`):** Coherent seeded world-space hills, graded road cuts/fill, clear 12 m corridor, grass/soil/rock/sand/wet material layers and restrained meadow variation. Wide terrain reaches 5.4 km on either side using coarser lateral samples. `Road.point/terrain` preserve the driving frame; `terrainPoint/terrainSurface` blend distant render cross-sections into world X/Z to avoid folds on bends. Geography and placement do not depend on weather.
+- **Composition (`Composition.ts`):** Open meadow/vista spans, deterministic 3–8-tree cluster anchors, slope/height/road exclusion, clear crest panoramas. Five small Kenney Nature Kit CC0 GLBs are normalized and instanced, with procedural fallback. Near cover, mid grass cards and far terrain form the field LOD strategy. See `WORLD_ASSETS.md`.
+- **Coast (`Landscape.ts`, `Water.ts`):** Coast starts over 8 km west of spawn, approaches about 2 km offshore near the first crest, then approaches a few hundred metres by route station 18 km. Variable dry/wet beach slopes into shallow/deep sea. The water strip begins at the same continuous world-space coast, uses stable origin-shift coordinates, sky reflection and haze; no camera-centered inland ocean plane.
+- **Environment/time (`Environment.ts`, `Weather.ts`, `Settings.ts`, `Sky.ts`):** Only Live Weather / Autumn / Snowfall are exposed. Live retains Open-Meteo city conditions and the city-local real clock, with continuous dusk/dawn star visibility and cloud suppression. Failed requests keep Live selected and label simulated conditions. Autumn/Snowfall use Morning 08:30, Noon 12:00, Evening 17:39 and Night 23:00. Fresh settings open in Autumn Evening. Curated sky keyframes, matched sun/ambient lighting, restrained Autumn evening stars and heavy-cloud Snowfall star suppression share the existing weather architecture.
 
 ---
 
-## 10. NEXT MAJOR PRIORITY — WORLD FOUNDATION
+## 10. CURRENT PRIORITY — FIRST-PUSH PERSONAL PLAYTEST
 
-> **THE NEXT MAJOR DEVELOPMENT GOAL IS THE WORLD FOUNDATION & ENVIRONMENT ENHANCEMENT.**  
-> The immediate target is to make simply driving through the natural world visually stunning and organic.
+The scenic-world first push is implemented and checked. The next step is the user's visual/driving acceptance, especially Autumn Evening at the inland opening and first crest, Live city time/weather, Snowfall coverage, field LOD and high-speed frame pacing. Automated checks and CPU-only chunk measurements do not establish browser appearance or 60 FPS.
 
-### Priority Roadmap
-1. **Long Highway & Chunk Streaming**: Extend highway distances and implement streaming lifecycle (generate ahead, recycle behind).
-2. **Organic Terrain & Hills**: Replace blocky placeholder terrain with natural rolling hills, valleys, and distant silhouettes.
-3. **Layered Terrain Materials**: Slope-, elevation-, and biome-aware multi-texture splatting (grass, soil, rock, sand, wet sand).
-4. **Instanced Grass & Ground Cover**: Dense, lightweight near-field blade instances respecting road exclusion zones.
-5. **Vegetation & Trees**: High-quality instanced tree families with distance LOD and culling.
-6. **Rocks & Cliffs**: Modular rock formations, coastal boulders, and steep slope outcroppings.
-7. **Coast & Beach Transitions**: Seamless natural transitions: Grass $\rightarrow$ Dry Sand $\rightarrow$ Wet Sand $\rightarrow$ Shallow Water $\rightarrow$ Deep Ocean.
-8. **Multi-Scale Water Shader**: Realistic Fresnel reflection, horizon haze, sun/moon specular highlights, and shore foam.
-9. **Atmospheric Integration**: Deep horizon fog, god rays, and ambient coastal haze.
-10. **Hero Visual Target Polish**: Autumn evening drive along the Pacific Coast Highway.
+Use `HANDOFF.md` for the pushed implementation checkpoint, validation, private playtest URL and exact continuation steps. Do not restart or re-audit frozen systems. The future infrastructure pass must respond to geography and requires the user's approval of this first pass.
 
 ---
 
