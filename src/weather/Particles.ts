@@ -294,7 +294,8 @@ export class Particles {
     inTunnel: boolean,
     carSpeed = 0,
     carLateralVel = 0,
-    carSlip = 0
+    carSlip = 0,
+    leafDensity = 1
   ) {
     this.group.position.copy(center);
 
@@ -387,9 +388,9 @@ export class Particles {
     // ----------------------------------------------------
     // 3. UPDATE AUTUMN LEAVES (3D Flutter, Tumbling & Car Wake)
     // ----------------------------------------------------
-    this.leafMesh.visible = !inTunnel && w.autumn > 0.08 && quality > 0;
+    this.leafMesh.visible = !inTunnel && w.autumn > 0.08 && quality > 0 && leafDensity > .01;
     if (this.leafMesh.visible) {
-      const activeLeaves = Math.floor(MAX_LEAVES * quality * w.autumn);
+      const activeLeaves = Math.floor(MAX_LEAVES * quality * w.autumn * leafDensity);
 
       for (let i = 0; i < MAX_LEAVES; i++) {
         if (i >= activeLeaves) {

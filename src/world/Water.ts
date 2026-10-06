@@ -1,14 +1,20 @@
 import * as THREE from 'three';
+import { Road } from '../road/Road.ts';
+import { SEA_LEVEL } from '../road/Landscape.ts';
 
 export class Water {
   mesh: THREE.Mesh;
   material: THREE.ShaderMaterial;
+  private section=Number.NaN;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, private road: Road) {
     this.material = new THREE.ShaderMaterial({
       transparent: false,
       uniforms: {
         time: { value: 0 },
+        origin: { value: 0 },
+        skyTop: { value: new THREE.Color() },
+        skyHorizon: { value: new THREE.Color() },
         night: { value: 0 },
         cloud: { value: 0 },
         storm: { value: 0 },
@@ -22,35 +28,21 @@ export class Water {
         varying vec3 vWorldNormal;
         varying float vDistance;
         varying vec3 vViewVec;
-        uniform float time, storm;
+        uniform float time, storm, origin;
 
         // Multi-frequency directional ocean wave spectrum (3 perceived scales: Swell, Wind Chop, Capillaries)
         void main() {
           vec3 p = position;
-
-          // Scale 1: Broad slow oceanic swell (Long wave length ~100m)
-          float s1 = sin(p.x * 0.025 + p.y * 0.018 + time * 0.65) * 0.55 * (1.0 + storm * 0.6);
-          // Scale 2: Wind-driven cross swell (~35m wavelength)
-          float s2 = cos(p.x * 0.065 - p.y * 0.048 - time * 1.15) * 0.28 * (1.0 + storm * 0.8);
-          // Scale 3: Dynamic chop wavelets (~12m wavelength)
-          float s3 = sin(p.x * 0.14 + p.y * 0.12 + time * 1.85) * 0.12;
-
-          p.z += s1 + s2 + s3;
-
+          vec2 q = p.xz;
+          float swell = sin(q.x*.025 + q.y*.018 + time*.65)*.25;
+          float chop = cos(q.x*.065 - q.y*.048 - time*1.15)*.12;
+          p.y += swell + chop;
           vec4 worldPos = modelMatrix * vec4(p, 1.0);
-          vPosition = worldPos.xyz;
-          vViewVec = cameraPosition - worldPos.xyz;
-
-          // Compute analytical wave normal slopes
-          float dx = (cos(p.x * 0.025 + p.y * 0.018 + time * 0.65) * 0.025 * 0.55 * (1.0 + storm * 0.6))
-                   - (sin(p.x * 0.065 - p.y * 0.048 - time * 1.15) * 0.065 * 0.28 * (1.0 + storm * 0.8))
-                   + (cos(p.x * 0.14 + p.y * 0.12 + time * 1.85) * 0.14 * 0.12);
-
-          float dy = (cos(p.x * 0.025 + p.y * 0.018 + time * 0.65) * 0.018 * 0.55 * (1.0 + storm * 0.6))
-                   + (sin(p.x * 0.065 - p.y * 0.048 - time * 1.15) * 0.048 * 0.28 * (1.0 + storm * 0.8))
-                   + (cos(p.x * 0.14 + p.y * 0.12 + time * 1.85) * 0.12 * 0.12);
-
-          vWorldNormal = normalize(vec3(-dx, 1.0, -dy));
+          vPosition = vec3(worldPos.x,worldPos.y,worldPos.z-origin);
+          vViewVec = cameraPosition-worldPos.xyz;
+          float dx = cos(q.x*.025+q.y*.018+time*.65)*.00625 - sin(q.x*.065-q.y*.048-time*1.15)*.0078;
+          float dz = cos(q.x*.025+q.y*.018+time*.65)*.0045 + sin(q.x*.065-q.y*.048-time*1.15)*.00576;
+          vWorldNormal=normalize(vec3(-dx,1.,-dz));
 
           vec4 mv = viewMatrix * worldPos;
           vDistance = -mv.z;
@@ -63,7 +55,7 @@ export class Water {
         varying float vDistance;
         varying vec3 vViewVec;
         uniform float time, night, cloud, storm, sunset, fogDensity;
-        uniform vec3 sunDir, fogColor;
+        uniform vec3 sunDir, fogColor, skyTop, skyHorizon;
 
         // Procedural noise for micro-surface ripple perturbation
         float hash(vec2 p) {
@@ -99,14 +91,7 @@ export class Water {
           vec3 baseWater = mix(deepColor, shallowColor, 0.32);
 
           // 3. Multi-Stop Atmospheric Sky & Horizon Reflection
-          vec3 skyZenith = mix(vec3(0.12, 0.32, 0.55), vec3(0.02, 0.035, 0.08), night);
-          vec3 skyHorizon = mix(vec3(0.55, 0.68, 0.82), vec3(0.04, 0.06, 0.12), night);
-
-          // Sunset Twilight Reflection (Magenta zenith to golden-orange horizon)
-          skyZenith = mix(skyZenith, vec3(0.32, 0.12, 0.38), sunset * (1.0 - night));
-          skyHorizon = mix(skyHorizon, vec3(0.96, 0.48, 0.18), sunset * (1.0 - night));
-
-          vec3 envReflection = mix(skyZenith, skyHorizon, pow(1.0 - NdotV, 2.0));
+          vec3 envReflection = mix(skyTop, skyHorizon, pow(1.0 - NdotV, 2.0));
           vec3 oceanSurface = mix(baseWater, envReflection, fresnel * (0.88 - storm * 0.12));
 
           // 4. Broken Sunset / Sun Specular Glint Shimmer Path
@@ -140,10 +125,8 @@ export class Water {
     });
 
     this.material.fragmentShader = this.material.fragmentShader.replace(';#include', ';\n#include');
-    // Massive 7000x7000 ocean surface with vertex displacement
-    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(7000, 7000, 128, 128), this.material);
-    this.mesh.rotation.x = -Math.PI / 2;
-    this.mesh.position.y = 7.4;
+    this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
+    this.mesh.position.y = SEA_LEVEL;
     scene.add(this.mesh);
   }
 
@@ -155,9 +138,15 @@ export class Water {
     fog: THREE.FogExp2,
     storm = 0,
     hour = 12,
-    sunDir = new THREE.Vector3(0, 1, 0)
+    sunDir = new THREE.Vector3(0, 1, 0),
+    s = 0, origin = 0, skyTop?: THREE.Color, skyHorizon?: THREE.Color
   ) {
-    this.mesh.position.z = z;
+    const section=Math.floor(s/960);
+    if(section!==this.section){this.section=section;this.rebuild(section*960);}
+    this.mesh.position.z=origin;
+    this.material.uniforms.origin.value=origin;
+    if(skyTop)this.material.uniforms.skyTop.value.copy(skyTop);
+    if(skyHorizon)this.material.uniforms.skyHorizon.value.copy(skyHorizon);
     const sunset = (hour >= 16.5 && hour <= 19.8) ? (1.0 - Math.abs(hour - 18.0) / 1.8) : 0;
 
     this.material.uniforms.time.value = time;
@@ -169,4 +158,24 @@ export class Water {
     this.material.uniforms.fogColor.value.copy(fog.color);
     this.material.uniforms.fogDensity.value = fog.density;
   }
+  private rebuild(center:number) {
+    const positions:number[]=[],indices:number[]=[];
+    const offshore=[0,40,160,500,1400,3200,7000];
+    // A strip starts at the actual sampled shoreline, never under the road.
+    // Stable world coordinates avoid wave swimming during origin shifts.
+    const start=Math.max(2800,center-6500),end=Math.max(start+120,center+6500);
+    const rows=Math.ceil((end-start)/120),n=offshore.length;
+    for(let j=0;j<=rows;j++){
+      const s=start+(end-start)*j/rows;
+      const edge=this.road.coastPoint(s);
+      for(let i=0;i<n;i++){
+        positions.push(edge.x-offshore[i],0,edge.z);
+        if(j<rows&&i<n-1){const a=j*n+i,b=a+1,c=a+n,d=c+1;indices.push(a,c,b,b,c,d);}
+      }
+    }
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);
+    geometry.computeBoundingSphere();this.mesh.geometry.dispose();this.mesh.geometry=geometry;
+  }
+
 }

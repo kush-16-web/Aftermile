@@ -118,13 +118,15 @@ export class Materials {
     this.asphalt.roughness = reflections ? Math.max(0.22, 0.86 - wet * 0.64) : 0.86;
     this.asphalt.metalness = reflections ? Math.min(0.32, 0.04 + wet * 0.26) : 0.04;
     const baseAsphalt = new THREE.Color(0x404a50).lerp(new THREE.Color(0x181d22), wet * 0.58);
-    this.asphalt.color.copy(baseAsphalt).lerp(new THREE.Color(0xbac4c8), snow * 0.65);
+    this.asphalt.color.copy(baseAsphalt).lerp(new THREE.Color(0xbac4c8), snow * 0.23);
 
     // Autumn leaves color gradient: rich burnt amber and russet gold
     this.leaf.color.set(0x496452).lerp(new THREE.Color(0xc96f2a), autumn).lerp(new THREE.Color(0xc7d1d1), snow);
     this.pine.color.set(0x284b43).lerp(new THREE.Color(0x756b3e), autumn * 0.4).lerp(new THREE.Color(0xa5b9b9), snow * 0.8);
-    this.grass.color.set(0x8e9870).lerp(new THREE.Color(0xd4a04d), autumn * 0.65).lerp(new THREE.Color(0xe0e6e3), snow);
+    this.grass.color.set(0x8e9870).lerp(new THREE.Color(0xa79c65), autumn * 0.35).lerp(new THREE.Color(0xe0e6e3), snow);
 
+    this.rock.color.set(0x80796b).lerp(new THREE.Color(0xd5dcdf),snow*.78);
+    this.concrete.color.set(0x979c96).lerp(new THREE.Color(0xd6dcdf),snow*.55);
     this.light.emissiveIntensity = 0.12 + night * 2.7;
     this.glass.emissiveIntensity = 0.08 + night * 0.9;
     this.signalGreen.emissiveIntensity = signal === 0 ? 3.0 : 0.05;

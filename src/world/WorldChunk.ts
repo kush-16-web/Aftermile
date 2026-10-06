@@ -4,6 +4,7 @@ import { rng, smooth } from '../core/math.ts';
 import { Materials } from './Materials.ts';
 import { Batch } from './Batch.ts';
 import { terrainLayers } from '../road/Landscape.ts';
+import { treePlacements, vistaWeight } from './Composition.ts';
 import { WorldAssetLibrary } from './WorldAssetLibrary.ts';
 
 export class WorldChunk {
@@ -12,13 +13,19 @@ export class WorldChunk {
   textures: THREE.Texture[] = [];
   ownedMaterials: THREE.Material[] = [];
   start: number;
+  assetReady=false;leafDensity=0;
 
   constructor(public index: number, public road: Road, public m: Materials, vegetation = 1, public assets?:WorldAssetLibrary) {
     this.start = index * CHUNK;
+    this.assetReady=assets?.loaded??false;
     const random = rng(index * 79 + road.seed), batch = new Batch();
     const p = (s: number, o: number, l = 0) => {
       const a = road.point(s, o, l);
       return new THREE.Vector3(a.x, a.y, a.z + this.start);
+    };
+    const groundPoint=(s:number,o:number)=>{
+      const a=road.terrainPoint(s,o);
+      return new THREE.Vector3(a.x,road.terrainSurface(s,o),a.z+this.start);
     };
 
     const at = (key: string, s: number, o: number, y: number, w: number, h: number, d: number, mat: THREE.Material, geo = m.box) => {
@@ -187,7 +194,7 @@ export class WorldChunk {
     }
 
     // 6. Street Lighting (Properly Grounded & Aligned on Bridge and Highway)
-    if (isCity || isBridge || index % 2 === 0) {
+    if (isCity || isBridge) {
       for (let s = this.start + 32; s < this.start + CHUNK; s += 80) {
         for (const side of [-1, 1]) {
           if (road.isTunnel(s)) continue;
@@ -245,61 +252,39 @@ export class WorldChunk {
       }
     }
 
-    // 8. Biome-Specific Vegetation (Asset Slots: Pines, Oaks, Coastal Flora)
-    const isMountain = region.biome === 'country' || region.biome === 'tunnel';
-    const treeCount = Math.floor((isCity ? 12 : isMountain ? 80 : 65) * vegetation);
-    for (let i = 0; i < treeCount; i++) {
-      const s = this.start + random() * CHUNK, side = random() > 0.5 ? 1 : -1;
-      const offset = side * (26 + Math.pow(random(), 1.55) * 210);
-      const w = road.weights(s);
-      if (road.isBridge(s) || road.isTunnel(s)) continue;
-      const pos = p(s, offset);
-      pos.y = road.terrain(s, offset);
-      if (pos.y < 8 || (offset < 0 && w.coast > 0.25) || random() < w.city * 0.8) continue;
-
-      const scale = 0.8 + random() * 0.7;
-      const isPine = isMountain ? random() > 0.15 : isCoast ? random() > 0.75 : random() > 0.5;
-      const height = (isPine ? 7.5 : 5.5) + random() * 8.5;
-      const assetKind=isPine?'pine':'tree';
-      const used=this.assets?.add(batch,assetKind,'vegetation',pos.x,pos.y,pos.z,height/(isPine?12:8),random()*Math.PI*2);
-      if(used)continue;
-      batch.add('trunk', m.cylinder, m.bark, pos.x, pos.y + height * 0.38, pos.z, 0.22 * scale, height * 0.76, 0.22 * scale);
-      if (isPine) {
-        for (let layer = 0; layer < 4; layer++) {
-          batch.add('pine', m.cone, m.pine, pos.x, pos.y + height * (0.42 + layer * 0.17), pos.z, (3.6 - layer * 0.75) * scale, height * 0.55, (3.6 - layer * 0.75) * scale);
-        }
-      } else {
-        const leafMat = m.leaf;
-        for (let crown = 0; crown < 4; crown++) {
-          const cx = pos.x + (crown % 2 === 0 ? -1 : 1) * 1.2 * scale;
-          const cy = pos.y + height * (0.65 + crown * 0.11);
-          const cz = pos.z + (crown > 1 ? -1 : 1) * 1.1 * scale;
-          batch.add('leaf', m.leafShape, leafMat, cx, cy, cz, (3.2 - crown * 0.4) * scale, height * 0.28, (2.9 - crown * 0.3) * scale, random() * 6);
-        }
-      }
+    // Sparse groves are anchored across chunks; large meadow/vista stretches
+    // remain open. Geometry is reused; theme changes never rebuild placements.
+    const isMountain = region.biome === 'country';
+    const vista = vistaWeight(road, mid);
+    for (const tree of treePlacements(road, this.start, this.start + CHUNK)) {
+      const pos = groundPoint(tree.s, tree.offset);
+      this.leafDensity=Math.max(this.leafDensity,Math.max(0,1-Math.abs(tree.offset)/160)*.15);
+      const kind=tree.pine?'pine':'tree';
+      if(this.assets?.add(batch,kind,'vegetation',pos.x,pos.y,pos.z,tree.height/(tree.pine?12:8),tree.rotation))continue;
+      batch.add('trunk',m.cylinder,m.bark,pos.x,pos.y+tree.height*.4,pos.z,.24,tree.height*.8,.24);
+      batch.add('leaf',tree.pine?m.cone:m.leafShape,tree.pine?m.pine:m.leaf,pos.x,pos.y+tree.height*.7,pos.z,3.2,tree.height*.6,3.2,tree.rotation);
     }
 
     // Low, deterministic ground cover gives the terrain scale without filling
     // the streamed corridor with unbounded decorative objects.
-    const coverCount = Math.floor((isCity ? 8 : isCoast ? 20 : 30) * vegetation);
+    const coverCount = Math.floor(70 * vegetation);
     for (let i = 0; i < coverCount; i++) {
       const s = this.start + random() * CHUNK, side = random() > 0.5 ? 1 : -1;
-      const offset = side * (14 + random() * 120), w = road.weights(s);
+      const offset = side * (15 + Math.pow(random(), 1.8) * 110), w = road.weights(s);
       if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
-      const pos = p(s, offset);
-      pos.y = road.terrain(s, offset);
+      const pos = groundPoint(s, offset);
       if (pos.y < 8) continue;
-      const bush = random() > 0.58, assetKind = bush ? 'bush' : 'grass';
+      const bush = random() > 0.94 && vista < .4, assetKind = bush ? 'bush' : 'grass';
       const scale = bush ? 0.65 + random() * 0.65 : 0.8 + random() * 0.7;
+      if (!bush && i % 3 === 0) batch.add('mid-grass',m.grassShape,m.grass,pos.x,pos.y,pos.z,scale,scale,scale,random()*Math.PI*2);
       if (this.assets?.add(batch, assetKind, 'ground-cover', pos.x, pos.y, pos.z, scale, random() * Math.PI * 2)) continue;
       batch.add('ground-cover', m.grassShape, bush ? m.leaf : m.grass, pos.x, pos.y, pos.z, scale, scale, scale, random() * Math.PI * 2);
     }
 
     // 9. Coastal Boulders & Rock Formations
-    const rockCount = isCoast ? 24 : isMountain ? 18 : 6;
+    const rockCount = vista > .4 ? 0 : isCoast ? 6 : isMountain ? 3 : 0;
     for (let i = 0; i < rockCount; i++) {
-      const s = this.start + random() * CHUNK, o = (random() > 0.5 ? 1 : -1) * (28 + random() * 240), v = p(s, o);
-      v.y = road.terrain(s, o);
+      const s = this.start + random() * CHUNK, o = (random() > 0.5 ? 1 : -1) * (28 + random() * 240), v = groundPoint(s, o);
       if (v.y < 8) continue;
       const sz = 1.4 + random() * 5.0;
       if(!(this.assets?.add(batch,'rock','coastal-rock',v.x,v.y,v.z,sz/2,random()*Math.PI*2)))
@@ -322,7 +307,7 @@ export class WorldChunk {
     }
 
     // 11. Meaningful Route Navigation & Distance Signs
-    if (index % 4 === 2) {
+    if (index % 16 === 12 && vista < .3) {
       const s = this.start + 70;
       const nextRegion = road.region(s + 850);
       for (const side of [-1, 1]) at('gantry-post', s, side * 10, 5, 0.25, 10, 0.25, m.metal);
@@ -332,7 +317,7 @@ export class WorldChunk {
     }
 
     // Curve Warning & Speed Limit Signs
-    if (index % 3 === 1) {
+    if (index % 10 === 7 && vista < .3) {
       const s = this.start + 45;
       const isCurvy = Math.abs(road.bank(s)) > 0.03;
       const signText = isCurvy ? '◄ SHARP BEND  80 KM/H' : (isCity ? 'SPEED LIMIT 50' : 'SPEED LIMIT 100');
@@ -400,26 +385,28 @@ export class WorldChunk {
   }
 
   terrain() {
-    const side=[0,8,10,12,16,22,30,40,52,66,82,100,122,148,178,214,256,306,364,432,512,608,720,848,1000,1200];
-    this.grid(this.start,this.start+CHUNK,[...side.slice(1).reverse().map(x=>-x),...side],this.m.terrain,(s,o)=>this.road.terrain(s,o),true);
+    const side=[0,8,10,12,16,22,30,40,52,66,82,100,122,148,178,214,256,306,364,432,512,608,720,848,1000,1200,1500,1900,2400,3000,3800,4600,5400];
+    this.grid(this.start,this.start+CHUNK,[...side.slice(1).reverse().map(x=>-x),...side],this.m.terrain,(s,o)=>this.road.terrainSurface(s,o),true);
   }
 
   grid(s0: number, s1: number, offsets: number[], material: THREE.Material, height: (s: number, o: number) => number, colored = false, uv = false) {
     const positions: number[] = [], colors: number[] = [], normals:number[]=[], uvs: number[] = [], indices: number[] = [], rows = Math.ceil((s1 - s0) / 8), n = offsets.length;
     const grass = new THREE.Color(0x727b4c), sand = new THREE.Color(0xd1bb91), rock = new THREE.Color(0x88877b), soil = new THREE.Color(0x86765c), wet = new THREE.Color(0x807761), tint=new THREE.Color();
+    const alongTangent=new THREE.Vector3(),acrossTangent=new THREE.Vector3(),normal=new THREE.Vector3();
 
     for (let j = 0; j <= rows; j++) {
       for (let i = 0; i < n; i++) {
-        const s = s0 + (s1 - s0) * j / rows, o = offsets[i], p = this.road.point(s, o);
+        const s = s0 + (s1 - s0) * j / rows, o = offsets[i], p = colored?this.road.terrainPoint(s,o):this.road.point(s, o);
         const y=height(s,o);positions.push(p.x,y,p.z+this.start);
         uvs.push(i / (n - 1), j / rows);
 
         if (colored) {
           const along=height(s+.5,o)-height(s-.5,o),across=height(s,o+.5)-height(s,o-.5);
-          const h=this.road.heading(s),sin=Math.sin(h),cos=Math.cos(h);
-          const normal=new THREE.Vector3(-across*cos-along*sin,1,along*cos-across*sin).normalize();
+          const a=this.road.terrainPoint(s-.5,o),b=this.road.terrainPoint(s+.5,o),c=this.road.terrainPoint(s,o-.5),d=this.road.terrainPoint(s,o+.5);
+          alongTangent.set(b.x-a.x,along,b.z-a.z);acrossTangent.set(d.x-c.x,across,d.z-c.z);
+          normal.crossVectors(acrossTangent,alongTangent).normalize();
           normals.push(normal.x,normal.y,normal.z);
-          const layers=terrainLayers(this.road,s,o,y,Math.hypot(along,across));
+          const layers=terrainLayers(this.road,s,o,y,Math.hypot(along,across),true);
           tint.copy(soil).lerp(grass,layers.grass).lerp(rock,layers.rock).lerp(sand,layers.sand).lerp(wet,layers.wet);
           colors.push(tint.r,tint.g,tint.b);
         }

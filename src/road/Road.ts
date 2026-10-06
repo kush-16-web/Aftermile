@@ -1,6 +1,6 @@
 import { hash, lerp, mod, smooth } from '../core/math.ts';
 import { REGION_SPAN, routeProfile } from './RouteProfile.ts';
-import { landscapeHeight, shoreDistance } from './Landscape.ts';
+import { coastPoint, landscapeHeight, landscapePoint, shoreDistance } from './Landscape.ts';
 
 export type Biome = 'coast' | 'country' | 'bridge' | 'city' | 'tunnel' | 'plains';
 export const CHUNK = 160;
@@ -8,7 +8,7 @@ export const ROAD_HALF = 8;
 export const REGION_LENGTH = REGION_SPAN;
 // Natural landscapes lead the journey. Existing bridge/tunnel/city APIs remain
 // available to traffic and navigation; no new city systems are introduced.
-const sequence: Biome[] = ['coast', 'country', 'plains', 'coast', 'country', 'tunnel', 'bridge', 'plains', 'city'];
+const sequence: Biome[] = ['plains', 'country', 'plains', 'country', 'coast', 'country', 'coast'];
 const names: Record<Biome, string[]> = {
   coast: ['Ember Coast', 'Crescent Bay', 'Stillwater Shore'],
   country: ['Cypress Valley', 'Golden Meadows', 'Juniper Hills'],
@@ -45,11 +45,10 @@ export class Road {
     const h = this.heading(s);
     return { x: this.center(s) + Math.cos(h) * offset, y: this.height(s) + lift + offset * this.bank(s), z: -s + Math.sin(h) * offset };
   }
-  isBridge(s: number) {
-    const r = this.region(s);
-    return (r.biome === 'bridge' && r.progress > .12 && r.progress < .82) || (r.biome === 'coast' && r.progress > .68 && r.progress < .78);
-  }
-  isTunnel(s: number) { const r = this.region(s); return r.biome === 'tunnel' && r.progress > .14 && r.progress < .82; }
+  // Infrastructure is deliberately dormant for the scenic first push.
+  // Keep the APIs for the frozen consumers and future geography-driven pass.
+  isBridge(_s: number) { return false; }
+  isTunnel(_s: number) { return false; }
   hasGuardrail(s: number, side: -1 | 1): boolean {
     if (this.isBridge(s) || this.isTunnel(s)) return true;
     const station = this.station(s - 50);
@@ -60,19 +59,14 @@ export class Road {
     // Curves and embankments
     const curve = Math.abs(this.bank(s));
     const grade = Math.abs(this.grade(s));
-    const index = Math.floor(s / CHUNK);
-    return curve > 0.025 || grade > 0.0075 || (index % 2 === 0);
+    return curve > 0.018 || grade > 0.018;
   }
   terrain(s: number, offset: number) {
     return landscapeHeight(this,s,offset);
   }
+  terrainPoint(s:number,offset:number){return landscapePoint(this,s,offset);}
+  terrainSurface(s:number,offset:number){return landscapeHeight(this,s,offset,true);}
+  coastPoint(s:number){return coastPoint(this,s);}
   shoreline(s:number){return shoreDistance(s,this.seed);}
-  station(s: number) {
-    const cycle = Math.floor((s - 650) / 1600);
-    for(let i=cycle; i<=cycle+2; i++) {
-      const at = 650 + i * 1600;
-      if (at > s - 55 && at > 0 && !this.isBridge(at) && !this.isTunnel(at)) return at;
-    }
-    return s + 3000;
-  }
+  station(_s: number) { return Number.POSITIVE_INFINITY; }
 }

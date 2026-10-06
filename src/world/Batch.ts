@@ -16,9 +16,10 @@ export class Batch {
     const diff=b.clone().sub(a);this.temp.scale.set(radius,diff.length(),radius);this.temp.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),diff.normalize());this.temp.updateMatrix();row.matrices.push(this.temp.matrix.clone());
   }
   build(group:THREE.Group) {
-    for(const {geo,mat,matrices} of this.items.values()) {
+    for(const [key,{geo,mat,matrices}] of this.items) {
       const mesh=new THREE.InstancedMesh(geo,mat,matrices.length);
-      matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.castShadow=true;mesh.receiveShadow=true;mesh.computeBoundingSphere();group.add(mesh);
+      matrices.forEach((m,i)=>mesh.setMatrixAt(i,m));mesh.castShadow=!key.includes('ground-cover')&&!key.includes('mid-grass');mesh.receiveShadow=true;
+      mesh.userData.detailTier=key.includes('ground-cover')?'near':key.includes('mid-grass')?'mid':key.includes('vegetation')?'trees':'world';mesh.computeBoundingSphere();group.add(mesh);
     }
     this.items.clear();
   }

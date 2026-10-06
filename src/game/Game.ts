@@ -92,7 +92,7 @@ export class Game {
     this.renderer.info.autoReset = false;
     this.world = new World(this.scene, this.road);
     this.sky = new Sky(this.scene);
-    this.water = new Water(this.scene);
+    this.water = new Water(this.scene,this.road);
     this.life = new AmbientLife(this.scene, this.road, this.world.materials);
     this.effects = new VehicleEffects(this.scene);
 
@@ -357,12 +357,12 @@ export class Game {
     const inTunnel=this.road.isTunnel(this.car.s);
     this.sky.update(moving?dt:0,this.cinematicTime,this.camera,this.position,w,s.timeMode,s.hour,this.weather.mode==='live'?this.weather.city?.timezone:undefined,s.reducedFlashes,this.weather.mode,s.environmentTime);
     const sunDir = this.sky.sun.position.clone().sub(this.position).normalize();
-    this.water.update(this.cinematicTime,this.position.z,this.sky.night,w.cloud,this.scene.fog as THREE.FogExp2,w.storm,this.sky.hour,sunDir);
+    this.water.update(this.cinematicTime,this.position.z,this.sky.night,w.cloud,this.scene.fog as THREE.FogExp2,w.storm,this.sky.hour,sunDir,this.car.s,origin,this.sky.skyMaterial.uniforms.uTop.value,this.sky.skyMaterial.uniforms.uHorizon.value);
     this.life.update(this.time,this.car.s,origin,this.sky.night < 0.6,w.storm > 0.4 || w.wet > 0.7);
     this.life.onBirdNearby = (pan: number) => {
       if (this.screen === 'playing') this.audio.birdCall(0.04, pan);
     };
-    this.particles.update(dt,this.cinematicTime,this.position,w,s.particles,inTunnel,this.car.speed,this.car.lateralVelocity,this.car.slip);
+    this.particles.update(dt,this.cinematicTime,this.position,w,s.particles,inTunnel,this.car.speed,this.car.lateralVelocity,this.car.slip,this.world.leafDensity);
     this.world.materials.update(w.wet,w.snow,w.autumn,this.sky.night,s.reflections,signalState(this.time),this.cinematicTime,w.wind);this.season.snow.value=w.snow;this.season.autumn.value=w.autumn;
     const wWeights=this.road.weights(this.car.s);
     const waterProximity=Math.max(0,Math.min(1,Math.max(wWeights.bridge*1.0,wWeights.coast*0.92,this.road.isBridge(this.car.s)?1.0:0)));
