@@ -257,60 +257,123 @@ export class WorldChunk {
       }
     }
 
-    // Sparse groves are anchored across chunks; large meadow/vista stretches
-    // remain open. Geometry is reused; theme changes never rebuild placements.
+    // 8. REAL MATURE TREE LIBRARY & VEGETATION HIERARCHY
+    // Sparse groves and hero trees are anchored across chunks; large meadow vistas remain open.
+    // Real mature models tower over the vehicle and integrate with vertical undergrowth layers.
     const isMountain = region.biome === 'country';
     const vista = vistaWeight(road, mid);
+
     for (const tree of treePlacements(road, this.start, this.start + CHUNK)) {
       const pos = groundPoint(tree.s, tree.offset);
-      this.leafDensity=Math.max(this.leafDensity,Math.max(0,1-Math.abs(tree.offset)/190)*tree.leafLoad*.24);
+      this.leafDensity = Math.max(this.leafDensity, Math.max(0, 1 - Math.abs(tree.offset) / 190) * tree.leafLoad * 0.24);
       this.leafSources.push({
-        x:pos.x,y:pos.y+tree.height*.78,z:pos.z,
-        radius:tree.canopyRadius,load:tree.leafLoad,
-        key:Math.round(tree.s*10)+Math.round(tree.offset),
+        x: pos.x,
+        y: pos.y + tree.height * 0.78,
+        z: pos.z,
+        radius: tree.canopyRadius,
+        load: tree.leafLoad,
+        key: Math.round(tree.s * 10) + Math.round(tree.offset),
       });
-      const kind=tree.pine?'pine':'tree';
-      if(this.assets?.add(batch,kind,'vegetation',pos.x,pos.y,pos.z,tree.height/(tree.pine?23:17),tree.rotation))continue;
-      batch.add('trunk',m.cylinder,m.bark,pos.x,pos.y+tree.height*.4,pos.z,.24,tree.height*.8,.24);
-      batch.add('leaf',tree.pine?m.cone:m.leafShape,tree.pine?m.pine:m.leaf,pos.x,pos.y+tree.height*.7,pos.z,3.2,tree.height*.6,3.2,tree.rotation);
 
-      // Settled autumn litter is anchored to the same broadleaf source as the
-      // airborne system. A few deterministic patches keep shoulders readable
-      // without carpeting the entire road.
-      if(!tree.pine){
-        const patchCount=3+Math.floor(tree.leafLoad*5);
-        for(let patch=0;patch<patchCount;patch++){
-          const angle=random()*Math.PI*2, radius=(.35+random()*1.25)*tree.canopyRadius;
-          const patchS=tree.s+Math.cos(angle)*radius,patchO=tree.offset+Math.sin(angle)*radius;
-          const patchPos=groundPoint(patchS,patchO);
-          batch.add('fallen-leaf',m.leafGroundShape,m.leaf,patchPos.x,patchPos.y+.018,patchPos.z,.45+random()*.55,.45+random()*.55,.45+random()*.55,random()*Math.PI*2,-Math.PI/2);
+      const baseH = tree.kind === 'pine_tall' ? 26.0 : tree.kind === 'oak_mature' ? 22.0 : tree.kind === 'ash_mature' ? 20.0 : 15.0;
+      const treeScale = tree.height / baseH;
+      const assetAdded = this.assets?.add(batch, tree.kind, 'vegetation', pos.x, pos.y, pos.z, treeScale, tree.rotation);
+
+      if (!assetAdded) {
+        // Fallback procedural silhouette only when assets are still loading
+        batch.add('trunk', m.cylinder, m.bark, pos.x, pos.y + tree.height * 0.4, pos.z, 0.35 * treeScale, tree.height * 0.8, 0.35 * treeScale);
+        batch.add('leaf', tree.pine ? m.cone : m.leafShape, tree.pine ? m.pine : m.leaf, pos.x, pos.y + tree.height * 0.7, pos.z, tree.canopyRadius, tree.height * 0.6, tree.canopyRadius, tree.rotation);
+      }
+
+      // Vertical hierarchy: undergrowth shrubs and wild plants beneath tree canopies
+      if (tree.hasUndergrowth && !road.isBridge(tree.s) && !road.isTunnel(tree.s)) {
+        const shrubCount = 2 + Math.floor(random() * 3);
+        for (let sh = 0; sh < shrubCount; sh++) {
+          const shAngle = random() * Math.PI * 2;
+          const shDist = (0.25 + random() * 0.8) * tree.canopyRadius;
+          const shS = tree.s + Math.cos(shAngle) * shDist;
+          const shO = tree.offset + Math.sin(shAngle) * shDist;
+          if (Math.abs(shO) > 16 && shS >= this.start && shS < this.start + CHUNK) {
+            const shPos = groundPoint(shS, shO);
+            if (shPos.y >= 8) {
+              const isWeed = random() > 0.55;
+              const kind = isWeed ? 'weed' : 'shrub';
+              const scale = isWeed ? 0.8 + random() * 0.5 : 0.7 + random() * 0.6;
+              this.assets?.add(batch, kind, 'undergrowth', shPos.x, shPos.y, shPos.z, scale, random() * Math.PI * 2);
+            }
+          }
+        }
+      }
+
+      // Settled autumn leaf litter beneath broadleaf canopies
+      if (!tree.pine) {
+        const patchCount = 3 + Math.floor(tree.leafLoad * 5);
+        for (let patch = 0; patch < patchCount; patch++) {
+          const angle = random() * Math.PI * 2,
+            radius = (0.35 + random() * 1.25) * tree.canopyRadius;
+          const patchS = tree.s + Math.cos(angle) * radius,
+            patchO = tree.offset + Math.sin(angle) * radius;
+          const patchPos = groundPoint(patchS, patchO);
+          batch.add(
+            'fallen-leaf',
+            m.leafGroundShape,
+            m.leaf,
+            patchPos.x,
+            patchPos.y + 0.018,
+            patchPos.z,
+            0.45 + random() * 0.55,
+            0.45 + random() * 0.55,
+            0.45 + random() * 0.55,
+            random() * Math.PI * 2,
+            -Math.PI / 2
+          );
         }
       }
     }
 
-    // Low, deterministic ground cover gives the terrain scale without filling
-    // the streamed corridor with unbounded decorative objects.
-    const coverCount = Math.floor(70 * vegetation);
-    for (let i = 0; i < coverCount; i++) {
-      const s = this.start + random() * CHUNK, side = random() > 0.5 ? 1 : -1;
-      const offset = side * (15 + Math.pow(random(), 1.8) * 110), w = road.weights(s);
+    // 9. LAYERED REAL GRASSLAND SYSTEM
+    // Grass extends seamlessly from the roadside verge into the open field.
+    // Near field (0-25m): detailed grass tufts and roadside weeds
+    // Mid field (25-110m): larger photogrammetric grass clusters
+    const nearGrassCount = Math.floor(55 * vegetation);
+    for (let i = 0; i < nearGrassCount; i++) {
+      const s = this.start + random() * CHUNK,
+        side = random() > 0.5 ? 1 : -1;
+      const offset = side * (13 + Math.pow(random(), 1.5) * 32),
+        w = road.weights(s);
       if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
       const pos = groundPoint(s, offset);
       if (pos.y < 8) continue;
-      const bush = random() > 0.94 && vista < .4, assetKind = bush ? 'bush' : 'grass';
-      const scale = bush ? 0.65 + random() * 0.65 : 0.8 + random() * 0.7;
-      if (!bush && i % 3 === 0 && !this.assets?.has('grass')) batch.add('mid-grass',m.grassShape,m.grass,pos.x,pos.y,pos.z,scale,scale,scale,random()*Math.PI*2);
-      if (this.assets?.add(batch, assetKind, 'ground-cover', pos.x, pos.y, pos.z, scale, random() * Math.PI * 2)) continue;
-      batch.add('ground-cover', m.grassShape, bush ? m.leaf : m.grass, pos.x, pos.y, pos.z, scale, scale, scale, random() * Math.PI * 2);
+      const isWeed = random() > 0.88;
+      const kind = isWeed ? 'weed' : 'grass_near';
+      const scale = isWeed ? 0.75 + random() * 0.45 : 0.85 + random() * 0.55;
+      if (this.assets?.add(batch, kind, 'grass-near', pos.x, pos.y, pos.z, scale, random() * Math.PI * 2)) continue;
+      batch.add('ground-cover', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, random() * Math.PI * 2);
     }
 
-    // 9. Coastal Boulders & Rock Formations
-    const rockCount = vista > .4 ? 0 : isCoast ? 6 : isMountain ? 3 : 0;
+    const fieldGrassCount = Math.floor(45 * vegetation);
+    for (let i = 0; i < fieldGrassCount; i++) {
+      const s = this.start + random() * CHUNK,
+        side = random() > 0.5 ? 1 : -1;
+      const offset = side * (26 + Math.pow(random(), 1.6) * 95),
+        w = road.weights(s);
+      if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
+      const pos = groundPoint(s, offset);
+      if (pos.y < 8) continue;
+      const scale = 0.9 + random() * 0.7;
+      if (this.assets?.add(batch, 'grass_field', 'grass-field', pos.x, pos.y, pos.z, scale, random() * Math.PI * 2)) continue;
+      batch.add('mid-grass', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, random() * Math.PI * 2);
+    }
+
+    // 10. Coastal Boulders & Rock Formations
+    const rockCount = vista > 0.4 ? 0 : isCoast ? 6 : isMountain ? 3 : 0;
     for (let i = 0; i < rockCount; i++) {
-      const s = this.start + random() * CHUNK, o = (random() > 0.5 ? 1 : -1) * (28 + random() * 240), v = groundPoint(s, o);
+      const s = this.start + random() * CHUNK,
+        o = (random() > 0.5 ? 1 : -1) * (28 + random() * 240),
+        v = groundPoint(s, o);
       if (v.y < 8) continue;
       const sz = 1.4 + random() * 5.0;
-      if(!(this.assets?.add(batch,'rock','coastal-rock',v.x,v.y,v.z,sz/2,random()*Math.PI*2)))
+      if (!this.assets?.add(batch, 'rock', 'coastal-rock', v.x, v.y, v.z, sz / 2.8, random() * Math.PI * 2))
         batch.add('rocks', m.sphere, m.rock, v.x, v.y, v.z, sz * 1.6, sz * 0.65, sz, random() * 6);
     }
 

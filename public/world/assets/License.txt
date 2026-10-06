@@ -1,0 +1,42 @@
+# AFTERMILE — WORLD ASSETS LICENSES & ATTRIBUTION
+
+All assets contained in this directory are released under permissive, commercial-compatible open licenses:
+
+--------------------------------------------------------------------------------
+1. POLY HAVEN ASSETS (CC0 1.0 Universal / Public Domain)
+--------------------------------------------------------------------------------
+Source: https://polyhaven.com
+License: Creative Commons CC0 1.0 Universal (Public Domain Dedication)
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+
+Assets:
+- grass_field_cluster.glb: Derived from "Grass Medium 02" (Poly Haven, CC0)
+- grass_tuft_near.glb: Derived from "Grass Bermuda 01" (Poly Haven, CC0)
+- shrub_dense.glb: Derived from "Shrub 03" by Rico Cilliers (Poly Haven, CC0)
+- plant_weed.glb: Derived from "Weed Plant 02" by Rob Tuytel & Rico Cilliers (Poly Haven, CC0)
+- rock_boulder.glb: Derived from "Boulder 01" by Poly Haven (CC0)
+
+--------------------------------------------------------------------------------
+2. AMBIENTCG TEXTURES (CC0 1.0 Universal / Public Domain)
+--------------------------------------------------------------------------------
+Source: https://ambientcg.com
+License: Creative Commons CC0 1.0 Universal (Public Domain Dedication)
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+
+Bark PBR texture maps used on mature tree trunks:
+- Bark001 (Oak & Roadside bark)
+- Bark007 (Ash bark)
+- Bark014 (Pine bark)
+
+--------------------------------------------------------------------------------
+3. EZ-TREE PROCEDURAL GENERATOR (MIT License)
+--------------------------------------------------------------------------------
+Author: Daniel Greenheck
+Source: https://github.com/dgreenheck/ez-tree
+License: MIT License
+
+Leaf textures and procedural branching algorithms for:
+- tree_oak_mature.glb (Mature Oak, 22m target height)
+- tree_ash_mature.glb (Mature Ash, 20m target height)
+- tree_roadside.glb (Medium Roadside Tree, 15m target height)
+- tree_pine_tall.glb (Tall Pine / Conifer, 26m target height)

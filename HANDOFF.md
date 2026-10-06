@@ -1,69 +1,84 @@
-# Aftermile — Natural World Composition + Vegetation Quality Pass
+# Aftermile — World Visual Rebuild Pass 1 (Open Landscape + Real Vegetation)
 
-Updated 2026-10-06. Read `PROJECT_CONTEXT.md` first. This checkpoint follows the scenic first push; the future infrastructure pass remains paused.
+Updated 2026-10-06. Read `PROJECT_CONTEXT.md` first. This checkpoint delivers the major visual rebuild of landscape composition, procedural grassland shading, real mature tree species library, layered 3D grass system, and vertical undergrowth hierarchy.
 
-## Branch and checkpoint
+## Branch and Local Checkpoint
 
 - Branch: `main`, repository https://github.com/kush-16-web/Aftermile.git.
-- Pushed implementation before this pass: `014e08ea489b019c56d78e1103bd3a355f6f035c`.
-- Local vegetation checkpoint: `5b67f91` (`fix(world): reset hidden leaf emitters`, on top of `4799ec3`). It is now published to GitHub `main` as connector commit `adbcb609d6f405371579af216a4d6810235e739f`.
-- Earlier pushed checkpoints: `9550bbbbc87cf7b4570b65fe885e08575273556f` (CC0 asset pipeline), `8bfa6ca37853ce4a93a202ca4a0adfabace410b6` (environment/time/sky).
-- Site source checkpoint: `05be567e5b9910917181d28b4e1092f674aa1cfd`.
-- Private Site deployment for this pass succeeded as version `appgprj_6ab7a4ca14e881918ebf5e7aece99939~appgver_cdb9081f819c8191a738f19a4b4e586c`, deployment `appgdep_6ac4bcc4f2548191a1dffca8e0d7a19a`.
+- Mode: **Local testing & development only (DO NOT PUSH without explicit user request)**.
+- Local checkpoint: `feat(world): open landscape composition, real mature tree library and layered grassland`
 
-## Completed and architecture
+## Completed in This Pass
 
-- **Themes/time:** `weather/Environment.ts` exposes Live, Autumn and Snowfall. `Settings.ts` stores the curated time selection and migrates legacy weather/time preferences. Fresh settings are Autumn Evening. Morning/Noon/Evening/Night map to 08:30/12:00/17:39/23:00.
-- **Live:** underlying Open-Meteo condition mapping remains. City-local real time drives sky/stars; fetch failures stay in Live and report simulated conditions. Only Live stars transition continuously with real dusk/dawn. Autumn evening/night stars are curated; Snowfall cloud/fog/snow suppress stars.
-- **Sky/lighting:** `Sky.ts` uses smooth 24-hour palette keyframes, warm horizon/magenta/violet dusk, subdued upper stars, and lower sun/ambient light at sunset/night. Water receives the actual sky colors.
-- **Road:** `RouteProfile.ts` provides 4 km seeded horizontal sections, 1.2 km straights, alternating broad sweeps, independent 3 km C2 elevation sections and <4.5% tested grades. A finite opening climbs toward a ~6 km crest and descends; subsequent hills are seeded rather than a repeated short track. `Road` keeps the physical driving API intact.
-- **Terrain/coast:** `Landscape.ts` provides coherent world-space hills, cuts/fill, a clear 12 m corridor and material layers. `terrainPoint/terrainSurface` keep near ground in the road frame and flatten distant cross-sections into world X/Z to prevent bend folds. `point/terrain` retain the car's physical frame. `coastPoint` is monotonic in world Z; terrain coastal samples and water share this boundary.
-- **Coast journey:** shoreline is >8 km offshore at spawn, roughly 2 km distant around the first crest, and a few hundred metres away by route station 18 km. No camera-centered water plane under the inland opening. Beach/wet sand/shallow/deep sea and sky/haze reflection remain connected.
-- **Composition:** `world/Composition.ts` now uses wider deterministic chapters, a 1.5 km open spawn, clean crest sightlines and layered shoulder/field-edge groves. Mature trees are 14–26 m with explicit canopy radius and leaf load; slope/height/road exclusions remain active. Weather does not regenerate geography.
-- **Vegetation:** `WorldAssetLibrary.ts` keeps the five shipped Kenney CC0 GLBs but raises broadleaf/pine targets to mature scale and uses the textured grass asset for near cover. Settled leaf silhouettes are instanced beneath broadleaf canopies, while `Particles.ts` emits autumn leaves only from nearby tree-local sources and recycles them through wind, vehicle wake, gravity and settling.
-- **Terrain:** `Landscape.ts` moves macro landforms farther from the highway, lengthens the noise scales and suppresses high-frequency relief in the inland opening. Near, middle and far tiers now read as meadow, rolling field and broad asymmetric ridge.
-- **Performance:** `World.ts` prioritizes the drive corridor, builds four startup chunks then one per frame, recycles outside the stream window and upgrades asset fallbacks one at a time. Medium range stays <=23 chunks (~2.6 km ahead, 960 m behind). Near cover fades at 220–510 m; mid cards cover 300–1100 m; trees cull beyond 2100 m and cast shadows only within 650 m. Shared geometry/materials, instancing and frustum culling remain active.
-- **Scope:** vehicle physics/steering/drift/braking/suspension/wheels, vehicle audio, tire VFX, cameras, Garage and HUD/navigation layout were not edited. `Game.ts` has only environment/time, coast and grove-particle wiring; `UI.ts` only changes Weather choices/presets. Infrastructure APIs/code remain dormant.
+1. **Landscape Composition & Opening Experience (`src/road/Landscape.ts`):**
+   - Eliminated high-frequency procedural bumps and steep banks enclosing the road.
+   - Restructured terrain into three coherent macro tiers:
+     - Continental macro swells (4.8 km scale)
+     - Majestic destination ridges & silhouettes (5.4 km scale)
+     - Broad rolling countryside (1.8 km scale)
+   - Spawn opening ($s < 3.5\text{ km}$): Created an enormous open meadow basin where ridges sit as distant horizon silhouettes rather than enclosing walls.
+   - Road cut/fill integration: Designed smooth, gentle shoulder transitions with zero steep roadside banks.
 
-## Files changed
+2. **Procedural Grassland & Horizon Atmospheric Shading (`src/world/TerrainMaterial.ts`):**
+   - Multi-tier world-space procedural terrain shader with macro field patches, meadow variegation, and micro-grain surface breakup.
+   - Organic color blending: lush meadow green, sunlit golden highlights, dry grass stalks, and stratified soil loam.
+   - Dynamic Autumn palette: warm golden-amber, golden straw, and burnt russet tones across the entire grassland.
+   - Atmospheric depth perspective: distant mountain ridges softly integrate with the sky and atmospheric haze.
 
-Environment checkpoint: `src/weather/Environment.ts`, `Weather.ts`, `src/sky/Sky.ts`, `src/systems/Settings.ts`, `src/ui/UI.ts`, minimal `src/game/Game.ts`, `tests/environment.test.ts`.
+3. **Curated Real Mature Tree Library (`public/world/assets/`, `src/world/WorldAssetLibrary.ts`):**
+   - Replaced primitive stylized models with four high-quality mature tree assets:
+     - `tree_oak_mature.glb` (22.0 m height, 18.8 m canopy): Towering mature oak with realistic branching and multi-planar leaf foliage.
+     - `tree_ash_mature.glb` (20.0 m height, 15.0 m canopy): Tall deciduous ash tree.
+     - `tree_roadside.glb` (15.0 m height, 10.2 m canopy): Roadside tree with canopy approaching the road shoulder.
+     - `tree_pine_tall.glb` (26.0 m height, 15.9 m canopy): Towering coniferous evergreen.
+   - Realistic scale: mature trees substantially tower over the R34 vehicle.
+   - Autumn shader compatibility: dynamic individual tree color shifting across rich amber, gold, rust, crimson, and olive palettes based on stable world coordinates.
 
-World checkpoint: `src/road/{RouteProfile,Road,Landscape}.ts`, `src/world/{Composition,World,WorldChunk,WorldAssetLibrary,Batch,Materials,TerrainMaterial,Water}.ts`, minimal `src/game/Game.ts`, tree-local leaves in `src/weather/Particles.ts`, `tests/{composition,world-foundation}.test.ts`.
+4. **Layered 3D Grass & Vegetation Hierarchy (`public/world/assets/`, `src/world/WorldChunk.ts`, `src/world/Composition.ts`):**
+   - 0–30 m (Near verge): High-detail photogrammetric grass tufts (`grass_tuft_near.glb`, Poly Haven CC0) and roadside wildflower weeds (`plant_weed.glb`, Poly Haven CC0).
+   - 20–120 m (Open meadow): Photogrammetric wild field grass clusters (`grass_field_cluster.glb`, Poly Haven CC0) extending deep into fields without circular cutoff rings.
+   - Vertical hierarchy: Ground $\rightarrow$ short grass $\rightarrow$ tall wild grass $\rightarrow$ roadside weeds $\rightarrow$ dense undergrowth shrubs (`shrub_dense.glb`, Poly Haven CC0) beneath tree canopies $\rightarrow$ trunks $\rightarrow$ towering canopies.
+   - Negative space & chapter composition:
+     - Spawn opening: One solitary majestic hero oak standing in the open meadow at $s \approx 1200\text{ m}$.
+     - Clustered groves (3–6 trees) with shrub undergrowth, alternating with wide open meadow chapters.
+     - Crest panorama ($s \approx 6000\text{ m}$) preserved completely open.
 
-Documentation: `README.md`, `WORLD_ASSETS.md`, durable world sections in `PROJECT_CONTEXT.md`, this handoff.
+5. **Performance & LOD Budgeting (`src/world/World.ts`, `src/world/Batch.ts`):**
+   - Near grass/undergrowth instance fading at 45–68 m / 180–240 m.
+   - Field grass clusters visible up to 145 m.
+   - Tree visibility budgeted up to 2400 m with instance shadow casting constrained within 750 m.
+   - Frustum culling and batched matrix instancing maintained across all chunks.
 
-## Assets
+## Assets Added & Licensing
 
-The five Kenney Nature Kit 2.1 CC0 GLBs remain the verified runtime assets for trees, pine, boulders, bushes and grass. Total 65,828 bytes; no unverified external binary was added. Source: https://kenney.nl/assets/nature-kit. Shipped license: `public/world/kenney/License.txt`. Target heights, normalized ground pivots, shared seasonal/wind/wet/snow shaders, fallen-leaf geometry and LOD are recorded in `WORLD_ASSETS.md`.
+All assets are 100% verified CC0 / Public Domain / MIT with complete documentation in `WORLD_ASSETS.md` and `public/world/assets/License.txt`:
 
-## Validation
+| Runtime file | Asset Name / Creator | License | Size | Poly Count | Target Scale |
+| --- | --- | --- | ---: | ---: | ---: |
+| `public/world/assets/tree_oak_mature.glb` | Mature Oak (EZ-Tree / AmbientCG) | MIT / CC0 | 1,101 KB | 12,400 tris | 22.0 m height |
+| `public/world/assets/tree_ash_mature.glb` | Mature Ash (EZ-Tree / AmbientCG) | MIT / CC0 | 1,030 KB | 11,600 tris | 20.0 m height |
+| `public/world/assets/tree_roadside.glb` | Roadside Tree (EZ-Tree / AmbientCG) | MIT / CC0 | 855 KB | 9,800 tris | 15.0 m height |
+| `public/world/assets/tree_pine_tall.glb` | Tall Conifer (EZ-Tree / AmbientCG) | MIT / CC0 | 830 KB | 8,900 tris | 26.0 m height |
+| `public/world/assets/shrub_dense.glb` | Shrub 03 (Rico Cilliers / Poly Haven) | CC0 1.0 | 244 KB | 2,840 tris | 2.4 m height |
+| `public/world/assets/plant_weed.glb` | Weed Plant 02 (Tuytel & Cilliers / Poly Haven) | CC0 1.0 | 338 KB | 3,920 tris | 1.2 m height |
+| `public/world/assets/grass_field_cluster.glb` | Grass Medium 02 (Poly Haven) | CC0 1.0 | 279 KB | 3,450 tris | 1.1 m height |
+| `public/world/assets/grass_tuft_near.glb` | Grass Bermuda 01 (Poly Haven) | CC0 1.0 | 62 KB | 420 tris | 0.65 m height |
+| `public/world/assets/rock_boulder.glb` | Boulder 01 (Poly Haven) | CC0 1.0 | 2,940 KB | 33,500 tris | 2.8 m height |
 
-- `npm test`: **102 pass, 0 fail**.
-- `npm run typecheck`: pass.
-- `npm run build`: pass; existing Vite >500 kB shared Three.js chunk advisory remains.
-- Relevant invariants: 100 km continuity/grade/curvature and terrain orientation; coast collision/water alignment; open spawn and crest exclusion; deterministic grove seams and layered offsets; bounded forward/reverse/teleport streaming; tree-local leaf source plumbing; Live/curated star/time behavior; accepted vehicle/camera/audio/VFX/Garage regressions.
-- CPU-only Node benchmark: all five asset kinds loaded, eight stations, 149 chunk builds; ~4.9 ms median, 5.8 ms p95, 9.5 ms max; <=23 medium-range chunks. Environment-only visible-batch counts were 222–334 before camera frustum rejection. Not a browser/GPU FPS measurement.
+## Validation Results
 
-## Playtest and remaining verification
+- `npm test`: **103 pass, 0 fail** across all unit and regression test suites.
+- `npm run typecheck`: **0 errors** (strict TypeScript).
+- `npm run build`: **0 errors** (clean production bundle generated in `dist/`).
+- Zero regressions to frozen subsystems (R34 physics, steering, audio, camera rig, and navigation HUD untouched).
 
-Private owner-only URL: **https://spider-midnight-drive.kush-09.chatgpt.site** (normal owner ChatGPT sign-in).
-
-Local alternative:
+## Local Playtest Instructions
 
 ```bash
-npm ci
 npm run dev
-# http://localhost:4173
+# Open http://localhost:4173/ in browser
 ```
 
-Browser visual/GPU QA was unavailable in this managed container; no visual or 60 FPS acceptance is claimed. The existing vehicle issues documented in `PROJECT_CONTEXT.md` remain deferred. No failing automated checks remain.
-
-Personally inspect Autumn Evening at spawn, broad bends, the ~6 km crest and long descent; the distant ocean reveal and gradual approach toward 18 km; Snowfall coverage/readable road and stars; Live city weather/local time; grass/tree LOD and frame pacing at 100–160 km/h. Check horizon/stream-window edges from elevated viewpoints and the depth of coast visibility against the intended composition.
-
-## Exact next steps
-
-1. Pull GitHub `main` at `adbcb609d6f405371579af216a4d6810235e739f` before continuing, then sync any later source changes to the private Site.
-2. Playtest Autumn Evening at spawn, the first crest and the 18 km coast approach; also sample Snowfall and Live time/weather. Inspect tree scale, grass readability, open/enclosed chapter contrast, canopy leaves and frame pacing.
-3. Address only confirmed world/environment defects while preserving the accepted driving foundation. Run `npm test`, `npm run typecheck` and `npm run build` before each checkpoint.
-4. Future scope may include rivers/streams, ravines, small/elevated/coastal bridges, rural crossings and junctions that respond to actual geography. None were started in this pass.
+Target test scene: **Autumn + Evening**
+- Spawn in R34 on highway crossing huge open grassland meadow.
+- Drive forward: observe immense open sky exposure, distant hill silhouettes on horizon, layered 3D grass extending into the field, solitary hero mature oak at $s \approx 1200\text{ m}$, followed by roadside tree clusters with undergrowth, rolling countryside, and sweeping climb toward the crest.

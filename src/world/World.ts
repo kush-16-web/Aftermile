@@ -11,7 +11,11 @@ export class World {
   private lastS=0;
   private hasChunk=(id:number)=>this.chunks.has(id);
   constructor(public scene:THREE.Scene,public road:Road) {
-    // Loaded detail replaces fallback chunks gradually within the same budget.
+    this.assets.ready.then(()=>{
+      if(this.assets.loaded){
+        this.rebuild(this.lastS);
+      }
+    });
   }
   update(s:number,immediate=false) {
     this.lastS=s;
@@ -43,10 +47,10 @@ export class World {
       const distance=Math.abs(chunk.start+CHUNK*.5-s);
       for(const object of chunk.group.children){
         const tier=object.userData.detailTier;
-        if(tier==='near')object.visible=distance<560;
-        if(tier==='mid')object.visible=distance>300&&distance<1100;
-        if(tier==='trees')object.visible=distance<2100;
-        if(object instanceof THREE.InstancedMesh&&tier==='trees')object.castShadow=distance<650;
+        if(tier==='near')object.visible=distance<650;
+        if(tier==='mid')object.visible=distance<1250;
+        if(tier==='trees')object.visible=distance<2400;
+        if(object instanceof THREE.InstancedMesh&&tier==='trees')object.castShadow=distance<750;
       }
     }
   }

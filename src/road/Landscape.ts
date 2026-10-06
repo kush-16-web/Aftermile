@@ -41,23 +41,27 @@ export function landscapeHeight(road:Road,s:number,offset:number,landscapeFrame=
   if(distance<=CORRIDOR_HALF)return level-.055;
   const sample=coastalSample(road,s,offset,landscapeFrame);
   const w=road.weights(s),clearance=distance-CORRIDOR_HALF;
-  // The first sightline is a broad meadow. Large landforms are deliberately
-  // low-frequency and begin well away from the shoulder, while a restrained
-  // middle layer keeps the near field readable without producing a picket
-  // fence of small hills beside the road.
-  const macro=landscapeNoise(sample.worldS/2600,sample.x/1800,seed+31);
-  const ridge=1-Math.abs(landscapeNoise(sample.worldS/3600,sample.x/1500,seed+127)*2-1);
-  const middle=landscapeNoise(sample.worldS/850,sample.x/620,seed+53)-.5;
-  const small=landscapeNoise(sample.worldS/120,sample.x/140,seed+97)-.5;
-  const far=smooth((distance-260)/900);
-  const opening=1-smooth((sample.worldS-1200)/4200);
-  const landform=far*lerp(.34,1,1-opening);
-  const natural=15+macro*45+ridge*ridge*120*landform+middle*12+small*1.8*(1-far);
-  // A graded cut/fill corridor constrains near-road relief, with a zero-slope
-  // shoulder transition. Distant macro shape is independent of chunk borders.
-  const delta=clamp(natural-level,-clearance*.42,clearance*.58);
-  let ground=level-.055+delta*smooth(clearance/70);
-  ground=lerp(ground,level-.055,w.city*smooth(clearance/100)*.85);
+  // Broad, readable landscape architecture: continental macro swells (4.8km scale),
+  // majestic destination ridges (5.4km scale), and gentle rolling countryside (1.8km scale).
+  // High-frequency procedural noise is eliminated so the landscape feels expansive and serene.
+  const macro=landscapeNoise(sample.worldS/4800,sample.x/3600,seed+31);
+  const ridgeNoise=landscapeNoise(sample.worldS/5400,sample.x/2800,seed+127);
+  const ridge=1-Math.abs(ridgeNoise*2-1);
+  const rolling=landscapeNoise(sample.worldS/1800,sample.x/1400,seed+53)-.5;
+  const gentle=landscapeNoise(sample.worldS/800,sample.x/700,seed+97)-.5;
+
+  const mid=smooth((distance-70)/220);
+  const far=smooth((distance-280)/750);
+  // Inland opening: for the first ~3.5km, the highway cuts through an enormous open meadow basin.
+  // Major ridges form majestic silhouettes on the distant horizon rather than enclosing the road.
+  const opening=1-smooth((sample.worldS-1600)/3800);
+  const landform=far*lerp(.18,1,1-opening);
+  const natural=12+macro*32+ridge*ridge*150*landform+rolling*14*mid+gentle*2.5*(1-far);
+
+  // Smooth, gentle shoulder transition: the ground rolls away softly without steep banks beside the road.
+  const delta=clamp(natural-level,-clearance*.18-mid*18,clearance*.28+mid*35);
+  let ground=level-.055+delta*smooth(clearance/90);
+  ground=lerp(ground,level-.055,w.city*smooth(clearance/120)*.85);
 
   if(offset<0){
     const width=beachWidth(sample.worldS,seed),inland=sample.inland;

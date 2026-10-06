@@ -28,3 +28,32 @@ test('bundled world assets are small GLBs with a shipped CC0 manifest',()=>{
   assert.equal(total,65828);
   assert.ok(total<100000,'runtime detail stays below the 100 KB checkpoint budget');
 });
+
+test('real mature tree and foliage assets are verified GLB binaries with License.txt',()=>{
+  const manifest=readFileSync(join(root,'WORLD_ASSETS.md'),'utf8');
+  const license=readFileSync(join(root,'public/world/assets/License.txt'),'utf8');
+  assert.match(manifest,/tree_oak_mature\.glb/);
+  assert.match(manifest,/grass_field_cluster\.glb/);
+  assert.match(license,/POLY HAVEN ASSETS/);
+  assert.match(license,/EZ-TREE/);
+  
+  const newAssets=[
+    'tree_oak_mature.glb',
+    'tree_ash_mature.glb',
+    'tree_roadside.glb',
+    'tree_pine_tall.glb',
+    'shrub_dense.glb',
+    'plant_weed.glb',
+    'grass_field_cluster.glb',
+    'grass_tuft_near.glb',
+    'rock_boulder.glb'
+  ];
+
+  for(const name of newAssets){
+    const p=join(root,'public/world/assets',name);
+    const sz=statSync(p).size;
+    assert.ok(sz>10000,`${name} has non-trivial geometry data (${sz} bytes)`);
+    assert.deepEqual(readFileSync(p).subarray(0,4),Buffer.from('glTF'),`valid GLB header for ${name}`);
+  }
+});
+
