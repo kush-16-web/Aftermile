@@ -6,6 +6,10 @@ export class Batch {
     let row=this.items.get(key);if(!row){row={geo,mat,matrices:[]};this.items.set(key,row);}
     this.temp.position.set(x,y,z);this.temp.scale.set(sx,sy,sz);this.temp.rotation.set(rx,ry,rz);this.temp.updateMatrix();row.matrices.push(this.temp.matrix.clone());
   }
+  addMatrix(key:string,geo:THREE.BufferGeometry,mat:THREE.Material,matrix:THREE.Matrix4) {
+    let row=this.items.get(key);if(!row){row={geo,mat,matrices:[]};this.items.set(key,row);}
+    row.matrices.push(matrix.clone());
+  }
   segment(key:string,geo:THREE.BufferGeometry,mat:THREE.Material,a:THREE.Vector3,b:THREE.Vector3,radius:number) {
     let row=this.items.get(key);if(!row){row={geo,mat,matrices:[]};this.items.set(key,row);}
     this.temp.position.copy(a).add(b).multiplyScalar(.5);

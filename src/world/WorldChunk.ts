@@ -4,6 +4,7 @@ import { rng, smooth } from '../core/math.ts';
 import { Materials } from './Materials.ts';
 import { Batch } from './Batch.ts';
 import { terrainLayers } from '../road/Landscape.ts';
+import { WorldAssetLibrary } from './WorldAssetLibrary.ts';
 
 export class WorldChunk {
   group = new THREE.Group();
@@ -12,7 +13,7 @@ export class WorldChunk {
   ownedMaterials: THREE.Material[] = [];
   start: number;
 
-  constructor(public index: number, public road: Road, public m: Materials, vegetation = 1) {
+  constructor(public index: number, public road: Road, public m: Materials, vegetation = 1, public assets?:WorldAssetLibrary) {
     this.start = index * CHUNK;
     const random = rng(index * 79 + road.seed), batch = new Batch();
     const p = (s: number, o: number, l = 0) => {
@@ -249,7 +250,7 @@ export class WorldChunk {
     const treeCount = Math.floor((isCity ? 12 : isMountain ? 80 : 65) * vegetation);
     for (let i = 0; i < treeCount; i++) {
       const s = this.start + random() * CHUNK, side = random() > 0.5 ? 1 : -1;
-      const offset = side * (18 + Math.pow(random(), 1.55) * 210);
+      const offset = side * (26 + Math.pow(random(), 1.55) * 210);
       const w = road.weights(s);
       if (road.isBridge(s) || road.isTunnel(s)) continue;
       const pos = p(s, offset);
@@ -259,7 +260,9 @@ export class WorldChunk {
       const scale = 0.8 + random() * 0.7;
       const isPine = isMountain ? random() > 0.15 : isCoast ? random() > 0.75 : random() > 0.5;
       const height = (isPine ? 7.5 : 5.5) + random() * 8.5;
-
+      const assetKind=isPine?'pine':'tree';
+      const used=this.assets?.add(batch,assetKind,'vegetation',pos.x,pos.y,pos.z,height/(isPine?12:8),random()*Math.PI*2);
+      if(used)continue;
       batch.add('trunk', m.cylinder, m.bark, pos.x, pos.y + height * 0.38, pos.z, 0.22 * scale, height * 0.76, 0.22 * scale);
       if (isPine) {
         for (let layer = 0; layer < 4; layer++) {
@@ -276,6 +279,22 @@ export class WorldChunk {
       }
     }
 
+    // Low, deterministic ground cover gives the terrain scale without filling
+    // the streamed corridor with unbounded decorative objects.
+    const coverCount = Math.floor((isCity ? 8 : isCoast ? 20 : 30) * vegetation);
+    for (let i = 0; i < coverCount; i++) {
+      const s = this.start + random() * CHUNK, side = random() > 0.5 ? 1 : -1;
+      const offset = side * (14 + random() * 120), w = road.weights(s);
+      if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
+      const pos = p(s, offset);
+      pos.y = road.terrain(s, offset);
+      if (pos.y < 8) continue;
+      const bush = random() > 0.58, assetKind = bush ? 'bush' : 'grass';
+      const scale = bush ? 0.65 + random() * 0.65 : 0.8 + random() * 0.7;
+      if (this.assets?.add(batch, assetKind, 'ground-cover', pos.x, pos.y, pos.z, scale, random() * Math.PI * 2)) continue;
+      batch.add('ground-cover', m.grassShape, bush ? m.leaf : m.grass, pos.x, pos.y, pos.z, scale, scale, scale, random() * Math.PI * 2);
+    }
+
     // 9. Coastal Boulders & Rock Formations
     const rockCount = isCoast ? 24 : isMountain ? 18 : 6;
     for (let i = 0; i < rockCount; i++) {
@@ -283,7 +302,8 @@ export class WorldChunk {
       v.y = road.terrain(s, o);
       if (v.y < 8) continue;
       const sz = 1.4 + random() * 5.0;
-      batch.add('rocks', m.sphere, m.rock, v.x, v.y, v.z, sz * 1.6, sz * 0.65, sz, random() * 6);
+      if(!(this.assets?.add(batch,'rock','coastal-rock',v.x,v.y,v.z,sz/2,random()*Math.PI*2)))
+        batch.add('rocks', m.sphere, m.rock, v.x, v.y, v.z, sz * 1.6, sz * 0.65, sz, random() * 6);
     }
 
     // 10. City Architecture (Close-Range Inner City blocks)

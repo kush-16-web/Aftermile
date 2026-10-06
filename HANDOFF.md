@@ -1,47 +1,57 @@
-# World Foundation Pass 1 — active handoff
+# World Foundation Pass 1 — handoff
 
-Updated 2026-10-05. Read PROJECT_CONTEXT.md first. Base: `156d893bb3449cf66a48f54874558dbf9db26c65` on `main`. The current user explicitly authorizes checkpoint pushes. Frozen vehicle, audio, cockpit, VFX, navigation and Garage systems are protected.
+Updated 2026-10-05. Read `PROJECT_CONTEXT.md` first. The protected vehicle, cockpit, audio, VFX, navigation, and Garage systems remain unchanged except for world compatibility wiring.
 
-## Completed checkpoint 1
+## Completed
 
-- Road station/offset API is unchanged. Stateless seeded C2 profiles replace short sine waves: 4 km horizontal sections begin with 1.2 km straights, followed by broad transitions. Elevation uses 6 km profiles; regions last 9.6 km and natural biomes lead the journey.
-- 160 m streaming chunks remain. Medium retains up to 23 chunks (16 ahead / 6 behind / current), low 19, ultra 27. Startup generates four immediate chunks; then one chunk/frame fills the horizon. Distant chunks are disposed. World stats expose build duration and contiguous coverage.
-- Targeted 100 km / three-seed geometry regression, streaming/reverse/teleport bounds and existing road/drive smoke checks: 5/5 pass. Typecheck passes.
+- `src/road/RouteProfile.ts` now provides deterministic 4 km horizontal sections with 1.2 km straights, broad C2-ish transitions, and a bounded 6 km grade profile. `Road` keeps the existing public route API and 160 m chunk size.
+- `src/world/Streaming.ts` and `src/world/World.ts` keep a bounded forward/reverse window, prioritize the current corridor, generate four startup chunks and one distant chunk per frame, dispose out-of-window chunks, and expose build/coverage stats.
+- `src/road/Landscape.ts` provides deterministic multi-scale terrain, graded shoulders, road cuts/fill, corridor clearance, variable shoreline/beach/sand/wet/deep-water samples, and station/bridge handling.
+- `src/world/TerrainMaterial.ts` adds world-space terrain grain and grass/soil/rock/sand/wet seasonal variation. `Water.ts` retains the existing multi-scale wave/Fresnel surface at the shared sea level.
+- `src/world/WorldAssetLibrary.ts` loads five small Kenney Nature Kit CC0 GLBs, normalizes their ground pivot/height, and places their separate mesh parts through instanced batches with procedural fallback. `WORLD_ASSETS.md` and `public/world/kenney/License.txt` record provenance, license, sizes, geometry counts, optimization, and LOD status.
+- Vegetation, bushes/grass cover, and rocks use deterministic seeded placement outside the road corridor. No giant static road mesh or random unbounded decoration was added.
 
-## Current architecture / files
+## Verification
 
-`src/road/RouteProfile.ts`: analytic long route, derivatives and seed.
-`src/road/Road.ts`: public route/biome/corridor API used by all consumers.
-`src/world/Streaming.ts`: bounded window and creation priority.
-`src/world/World.ts`: lifecycle and timing counters.
-`src/world/WorldChunk.ts`: existing asphalt, terrain and roadside batches (next implementation area).
-`tests/world-foundation.test.ts`: long route / lifecycle regression.
+From `/workspace/aftermile-world`:
 
-No third-party assets added yet. No frozen subsystem modified.
+```text
+npm run typecheck  # pass
+npm test           # 94 pass, 0 fail
+npm run build      # pass; Vite emits only the existing >500 kB chunk advisory
+```
 
-## Completed checkpoint 2
+World/asset tests include 100 km seeded route and grade continuity, streaming bounds/reverse/teleports, terrain/coast/layer invariants, and CC0 GLB header/size/license checks.
 
-- Shared deterministic multi-scale landscape sampler, graded 12 m shoulder corridor, seeded variable coastline/beach and station apron integration.
-- Terrain grid has 51 columns, denser shoulder sampling and shared analytic finite-difference normals; mesh/collision use Road.terrain.
-- Seven targeted route/terrain/coast/streaming regressions pass; typecheck passes.
-- Files added/changed: `src/road/Landscape.ts`, `src/road/Road.ts`, `src/world/WorldChunk.ts`, `tests/world-foundation.test.ts`.
-- Checkpoint 1 remote commit: `bdf64773cf01b5e73adc027d19e9fb592339e53c`.
+## Checkpoints
 
-## Exact next implementation step
+- Public GitHub remote `main` currently ends at `3070cf7b25579b79a53931a19450718066223c9f`.
+- The complete local world checkpoint is `9814e20` (`feat(world): add CC0 instanced roadside asset pipeline`).
+- Private Site source was synchronized, tested, and pushed at `59e91c8a810c17f613c518381a8602cb8f0d7054`.
+- Private production deployment succeeded as Site version `appgprj_6ab7a4ca14e881918ebf5e7aece99939~appgver_94c1b72abb508191914fb831cd0912c5`, deployment `appgdep_6ac36e823af48191859efc9b391961e8`.
 
-Add terrain material detail and curated CC0 assets + WORLD_ASSETS.md, deterministic instanced vegetation/LOD, water shore-depth integration and distant scenery. Keep mainline asphalt dimensions and the existing road API.
+## Playtest
 
-## Known limits / remaining work
+Owner-private URL (requires the owner’s normal ChatGPT sign-in):
 
-Trees and water rendering still need integration. Terrain/coast sampling is now updated but the GPU appearance remains unverified. New stream generation is bounded by one full chunk per frame, not an asynchronous worker; profile actual build cost before claiming hitch-free. No GPU/FPS claim yet. Existing stations/bridges/city assets were retained, not expanded. Final npm test / typecheck / build and personal daylight/autumn-evening validation remain.
+`https://spider-midnight-drive.kush-09.chatgpt.site`
+
+## Remaining
+
+- GPU appearance and frame-time profiling still need a daylight/autumn/evening pass in a real browser session. Streaming is bounded but deliberately builds one distant chunk per frame rather than using a worker.
+- The GitHub write connector and direct `git push` are currently blocked by the automatic approval reviewer’s usage limit. The exact retry from the world checkout is:
+
+```text
+git push origin main
+```
+
+After the reviewer limit clears, push `9814e20` (or the subsequent handoff commit) to `kush-16-web/Aftermile` and verify `main` advances beyond `3070cf7`.
 
 ## Continue
 
-`npm ci`
-`npm run dev` → http://localhost:4173
-`node --experimental-transform-types --test tests/world-foundation.test.ts tests/core.test.ts`
-`npm run typecheck`
-`npm test`
-`npm run build`
-
-Push each stable milestone. At the final checkpoint provide the exact accessible playtest URL, or the dev command/local URL if hosting cannot be exposed. Do not deploy the older vehicle checkout over the current GitHub source.
+```text
+npm ci
+npm run dev     # http://localhost:4173
+npm test
+npm run build
+```

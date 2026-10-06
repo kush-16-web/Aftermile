@@ -1,8 +1,9 @@
 import * as THREE from 'three';
+import { TerrainMaterial } from './TerrainMaterial.ts';
 
 export class Materials {
   asphalt = new THREE.MeshStandardMaterial({ color: 0x404a50, roughness: 0.86, metalness: 0.04 });
-  terrain = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1.0 });
+  terrain = new TerrainMaterial();
   concrete = new THREE.MeshStandardMaterial({ color: 0x979c96, roughness: 0.94 });
   dark = new THREE.MeshStandardMaterial({ color: 0x252e35, roughness: 0.7 });
   metal = new THREE.MeshStandardMaterial({ color: 0x97a4a5, metalness: 0.55, roughness: 0.4 });
@@ -82,12 +83,17 @@ export class Materials {
         `
         #include <begin_vertex>
         // High-performance coherent wind wave displacement on canopy/blades
-        vec4 worldInstancePos = modelMatrix * vec4(transformed, 1.0);
+        vec4 instancePosition=vec4(transformed,1.0);
+        #ifdef USE_INSTANCING
+          instancePosition=instanceMatrix*instancePosition;
+        #endif
+        vec4 worldInstancePos = modelMatrix * instancePosition;
         float sway = sin(uWindTime * 2.2 + worldInstancePos.x * 0.12 + worldInstancePos.z * 0.12);
         float swayGust = cos(uWindTime * 1.4 + worldInstancePos.x * 0.06);
         float totalSway = (sway * 0.7 + swayGust * 0.3) * uWindStrength * ${strength.toFixed(3)};
-        transformed.x += totalSway;
-        transformed.z += totalSway * 0.6;
+        float rootMask=clamp(position.y*.22,0.0,1.0);
+        transformed.x += totalSway*rootMask;
+        transformed.z += totalSway*rootMask * 0.6;
         `
       );
     };
@@ -105,6 +111,9 @@ export class Materials {
   ) {
     this.timeUniform.value = time;
     this.windUniform.value = wind * 0.05;
+    this.terrain.uniforms.terrainAutumn.value=autumn;
+    this.terrain.uniforms.terrainSnow.value=snow;
+    this.terrain.uniforms.terrainWet.value=wet;
 
     this.asphalt.roughness = reflections ? Math.max(0.22, 0.86 - wet * 0.64) : 0.86;
     this.asphalt.metalness = reflections ? Math.min(0.32, 0.04 + wet * 0.26) : 0.04;

@@ -3,13 +3,20 @@ import { CHUNK, Road } from '../road/Road.ts';
 import { Materials } from './Materials.ts';
 import { WorldChunk } from './WorldChunk.ts';
 import { nextChunk, streamWindow } from './Streaming.ts';
+import { WorldAssetLibrary } from './WorldAssetLibrary.ts';
 export class World {
   chunks=new Map<number,WorldChunk>();materials=new Materials();origin=0;vegetation=1;range=8;
   stats={generated:0,disposed:0,lastBuildMs:0,maxBuildMs:0,aheadMetres:0,behindMetres:0};
+  assets=new WorldAssetLibrary();
+  private lastS=0;
   private hasChunk=(id:number)=>this.chunks.has(id);
-  constructor(public scene:THREE.Scene,public road:Road) {}
+  constructor(public scene:THREE.Scene,public road:Road) {
+    this.assets.ready.then(()=>{if(this.assets.loaded)this.rebuild(this.lastS);});
+  }
   update(s:number,immediate=false) {
+    this.lastS=s;
     this.origin=Math.floor(s/3200)*3200;
+    this.materials.terrain.uniforms.terrainOrigin.value=this.origin;
     const {center,min,max}=streamWindow(s,this.range);
     for(const [id,chunk]of this.chunks)if(id<min||id>max){chunk.dispose();this.chunks.delete(id);this.stats.disposed++;}
     // Startup builds only the immediate drive corridor; fill the distant horizon
@@ -18,7 +25,7 @@ export class World {
     while(remaining-->0){
       const i=nextChunk(center,min,max,this.hasChunk);if(i===null)break;
       const began=performance.now();
-      const chunk=new WorldChunk(i,this.road,this.materials,this.vegetation);this.chunks.set(i,chunk);this.scene.add(chunk.group);
+      const chunk=new WorldChunk(i,this.road,this.materials,this.vegetation,this.assets);this.chunks.set(i,chunk);this.scene.add(chunk.group);
       this.stats.lastBuildMs=performance.now()-began;this.stats.maxBuildMs=Math.max(this.stats.maxBuildMs,this.stats.lastBuildMs);this.stats.generated++;
     }
     let front=center;while(this.chunks.has(front))front++;

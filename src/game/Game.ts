@@ -120,12 +120,7 @@ export class Game {
     this.composer.addPass(new OutputPass());
     this.fxaa = new ShaderPass(FXAAShader);
     this.composer.addPass(this.fxaa);
-    this.world.materials.terrain.onBeforeCompile = shader => {
-      shader.uniforms.uSnow = this.season.snow;
-      shader.uniforms.uAutumn = this.season.autumn;
-      shader.fragmentShader = 'uniform float uSnow; uniform float uAutumn;\n' + shader.fragmentShader;
-      shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.16,0.97,0.74),uAutumn);\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.75,0.80,0.82),uSnow*0.9);');
-    };
+    // Terrain owns its material layers; existing weather updates provide season uniforms.
     this.navVoice.setSettings(this.settings.data.navVoice, this.settings.data.navVoiceVolume, this.settings.data.navVoiceId);
 
     this.garage = new GarageController(
