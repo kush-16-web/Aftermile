@@ -4,13 +4,16 @@ import { Materials } from './Materials.ts';
 import { WorldChunk, type LeafSource } from './WorldChunk.ts';
 import { nextChunk, streamWindow } from './Streaming.ts';
 import { WorldAssetLibrary } from './WorldAssetLibrary.ts';
+import { GrassField } from './GrassField.ts';
 export class World {
   chunks=new Map<number,WorldChunk>();materials=new Materials();origin=0;vegetation=1;range=8;leafDensity=0;
   stats={generated:0,disposed:0,lastBuildMs:0,maxBuildMs:0,aheadMetres:0,behindMetres:0};
   assets=new WorldAssetLibrary(this.materials);
+  grassField: GrassField;
   private lastS=0;
   private hasChunk=(id:number)=>this.chunks.has(id);
   constructor(public scene:THREE.Scene,public road:Road) {
+    this.grassField = new GrassField(this.scene, this.road, this.materials);
     this.assets.ready.then(()=>{
       if(this.assets.loaded){
         this.rebuild(this.lastS);
@@ -54,14 +57,27 @@ export class World {
       }
     }
 
+    this.grassField.update(
+      s,
+      this.origin,
+      this.materials.timeUniform.value,
+      this.materials.windUniform.value,
+      this.materials.terrain.uniforms.terrainAutumn.value
+    );
+
     this.updateLeafSources();
   }
-  rebuild(s:number) {for(const c of this.chunks.values())c.dispose();this.chunks.clear();this.update(s,true);}
+  rebuild(s:number) {
+    for(const c of this.chunks.values())c.dispose();
+    this.chunks.clear();
+    this.grassField.reset();
+    this.update(s,true);
+  }
   get objects() {let count=0;for(const c of this.chunks.values())count+=c.group.children.length;return count;}
 
   get statsCounts() {
     let trees = 0;
-    let grass = 0;
+    let grass = this.grassField ? this.grassField.totalInstances : 0;
     for (const chunk of this.chunks.values()) {
       for (const object of chunk.group.children) {
         if (object instanceof THREE.InstancedMesh) {
@@ -72,6 +88,12 @@ export class World {
       }
     }
     return { trees, grass };
+  }
+
+  dispose() {
+    for (const c of this.chunks.values()) c.dispose();
+    this.chunks.clear();
+    this.grassField.dispose();
   }
 
   private _cachedLeafSources:LeafSource[]=[];

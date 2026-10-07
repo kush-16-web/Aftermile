@@ -302,78 +302,7 @@ export class WorldChunk {
 
     }
 
-    // 9. CONTINUOUS LAYERED MEADOW & ROADSIDE VERGE SYSTEM
-    // Stratified jittered distribution guarantees zero longitudinal bare gaps or isolated clumping.
-    // 4-triangle X-cards (~0.88m span) interlock continuously into a rich, unbroken grassland carpet.
-    // Road clearance strictly preserved: verge |o| in [10.3m, 15.5m], continuous meadow |o| in [14.0m, 46.0m].
-    const grassSides = [-1, 1];
-    for (const side of grassSides) {
-      const sideRng = rng(index * 211 + (side === 1 ? 503 : 919));
-
-      // 1. Roadside Verge Carpet (10.3-15.5m): short, manicured roadside rough directly hugging the shoulder
-      // Stratified slices ensure continuous dense roadside framing with zero bare patches
-      const vergeSlices = Math.floor(340 * vegetation);
-      for (let i = 0; i < vergeSlices; i++) {
-        const s = this.start + ((i + sideRng() * 0.9) / vergeSlices) * CHUNK;
-        const offsetDist = 10.3 + Math.pow(sideRng(), 0.9) * 5.2;
-        const offset = side * offsetDist;
-        const w = road.weights(s);
-        if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
-
-        const pos = groundPoint(s, offset);
-        if (pos.y < 8) continue;
-
-        // Compact short verge grass footprint (0.58-0.78m height)
-        const scale = 0.72 + sideRng() * 0.24;
-        const rot = sideRng() * Math.PI * 2;
-        batch.add('grass-near', m.meadowClumpShape, m.meadowClump, pos.x, pos.y, pos.z, scale, scale, scale, rot);
-      }
-
-      // 2. Dense Continuous Meadow Carpet (14.0-32.0m): interlocking grassland base
-      // Stratified 2D grid jitter ensures complete ground coverage without void pockets
-      const meadowSlices = Math.floor(270 * vegetation);
-      const lanesPerSlice = 5;
-      for (let i = 0; i < meadowSlices; i++) {
-        const sBase = this.start + (i / meadowSlices) * CHUNK;
-        for (let l = 0; l < lanesPerSlice; l++) {
-          const s = sBase + ((l + sideRng()) / lanesPerSlice) * (CHUNK / meadowSlices);
-          const laneMin = 14.0 + (l / lanesPerSlice) * 18.0;
-          const offsetDist = laneMin + (sideRng() * (18.0 / lanesPerSlice));
-          const offset = side * offsetDist;
-          const w = road.weights(s);
-          if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
-
-          const pos = groundPoint(s, offset);
-          if (pos.y < 8) continue;
-
-          // Full meadow grass footprint (0.85-1.15m span, natural height variations)
-          const scale = 0.88 + sideRng() * 0.30;
-          const rot = sideRng() * Math.PI * 2;
-          batch.add('meadow-mid', m.meadowClumpShape, m.meadowClump, pos.x, pos.y, pos.z, scale, scale, scale, rot);
-        }
-      }
-
-      // 3. Meadow Transition Extension (31.0-46.0m): seamless continuity into distance shader fade
-      const transSlices = Math.floor(180 * vegetation);
-      const lanesTrans = 3;
-      for (let i = 0; i < transSlices; i++) {
-        const sBase = this.start + (i / transSlices) * CHUNK;
-        for (let l = 0; l < lanesTrans; l++) {
-          const s = sBase + ((l + sideRng()) / lanesTrans) * (CHUNK / transSlices);
-          const offsetDist = 31.0 + ((l + sideRng()) / lanesTrans) * 15.0;
-          const offset = side * offsetDist;
-          const w = road.weights(s);
-          if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
-
-          const pos = groundPoint(s, offset);
-          if (pos.y < 8) continue;
-
-          const scale = 0.90 + sideRng() * 0.28;
-          const rot = sideRng() * Math.PI * 2;
-          batch.add('meadow-mid', m.meadowClumpShape, m.meadowClump, pos.x, pos.y, pos.z, scale, scale, scale, rot);
-        }
-      }
-    }
+    // Continuous field grass is now rendered by the camera-centered GPU GrassField system.
 
 
     // 10. Coastal Boulders & Rock Formations
