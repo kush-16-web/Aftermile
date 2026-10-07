@@ -243,6 +243,8 @@ The world now feels like a **PLACE** rather than a procedural test map.
 
 ## 9. Local Commit
 
-**COMMIT SHA:** (to be captured after commit)
+**COMMIT SHA:** `1436895ae89152fd0e3819d23184a73a622d9bd3`
+
+**PLAYTEST URL:** `http://localhost:4173/`
 
 **DO NOT PUSH.** Awaits user manual drive test and push authorization.
