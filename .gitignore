@@ -8,3 +8,4 @@ dist/
 test-results/
 coverage/
 .DS_Store
+scratch/

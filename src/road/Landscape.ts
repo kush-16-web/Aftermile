@@ -82,7 +82,7 @@ export function terrainLayers(road:Road,s:number,o:number,height:number,slope:nu
   const wet=beach*(1-smooth((height-SEA_LEVEL-.15)/1.4));
   const sand=beach*(1-wet);
   const rock=smooth((slope-.22)/.62)*(1-beach);
-  const verge=1-smooth((Math.abs(o)-12)/15);
-  const grass=(1-beach)*(1-rock)*(1-verge*.65);
+  const verge=1-smooth((Math.abs(o)-9.8)/1.6);
+  const grass=(1-beach)*(1-rock)*(1-verge*.75);
   return {grass,rock,sand,wet};
 }

@@ -285,84 +285,93 @@ export class WorldChunk {
         batch.add('canopy-fallback', tree.pine ? m.cone : m.leafShape, tree.pine ? m.pine : m.leaf, pos.x, pos.y + tree.height * 0.7, pos.z, tree.canopyRadius, tree.height * 0.6, tree.canopyRadius, tree.rotation);
       }
 
-      // Vertical hierarchy: undergrowth shrubs and wild plants beneath tree canopies
-      if (tree.hasUndergrowth && !road.isBridge(tree.s) && !road.isTunnel(tree.s)) {
-        const shrubCount = 1 + Math.floor(random() * 2);
-        for (let sh = 0; sh < shrubCount; sh++) {
-          const shAngle = random() * Math.PI * 2;
-          const shDist = (0.25 + random() * 0.8) * tree.canopyRadius;
-          const shS = tree.s + Math.cos(shAngle) * shDist;
-          const shO = tree.offset + Math.sin(shAngle) * shDist;
-          if (Math.abs(shO) > 18.5 && shS >= this.start && shS < this.start + CHUNK) {
-            const shPos = groundPoint(shS, shO);
-            if (shPos.y >= 8) {
-              const isWeed = random() > 0.55;
-              const kind = isWeed ? 'weed' : 'shrub';
-              const scale = isWeed ? 0.8 + random() * 0.5 : 0.7 + random() * 0.6;
-              this.assets?.add(batch, kind, 'undergrowth', shPos.x, shPos.y, shPos.z, scale, random() * Math.PI * 2);
-            }
+      // Vertical hierarchy: rare undergrowth shrub beneath mature tree canopies
+      if (tree.hasUndergrowth && random() > 0.82 && !road.isBridge(tree.s) && !road.isTunnel(tree.s)) {
+        const shAngle = random() * Math.PI * 2;
+        const shDist = (0.3 + random() * 0.6) * tree.canopyRadius;
+        const shS = tree.s + Math.cos(shAngle) * shDist;
+        const shO = tree.offset + Math.sin(shAngle) * shDist;
+        if (Math.abs(shO) > 18.5 && shS >= this.start && shS < this.start + CHUNK) {
+          const shPos = groundPoint(shS, shO);
+          if (shPos.y >= 8) {
+            const scale = 0.75 + random() * 0.35;
+            this.assets?.add(batch, 'shrub', 'undergrowth', shPos.x, shPos.y, shPos.z, scale, random() * Math.PI * 2);
           }
         }
       }
 
     }
 
-    // 9. LAYERED MEADOW & ROADSIDE VERGE SYSTEM
-    // Seamless continuous grassland using 6-triangle volumetric star clumps with 4-variant grass atlas.
-    // Extremely lightweight (~2.8k triangles per chunk) with zero pop distance fade and matching terrain.
-    // Road clearance strictly preserved: near verge |o| in [13.5m, 28m], mid meadow |o| in [24m, 95m].
+    // 9. CONTINUOUS LAYERED MEADOW & ROADSIDE VERGE SYSTEM
+    // Stratified jittered distribution guarantees zero longitudinal bare gaps or isolated clumping.
+    // 4-triangle X-cards (~0.88m span) interlock continuously into a rich, unbroken grassland carpet.
+    // Road clearance strictly preserved: verge |o| in [10.3m, 15.5m], continuous meadow |o| in [14.0m, 46.0m].
     const grassSides = [-1, 1];
     for (const side of grassSides) {
       const sideRng = rng(index * 211 + (side === 1 ? 503 : 919));
 
-      // Near verge (10.4-20.0m): dense, crisp roadside grass fringe hugging right against the 10m highway shoulder
-      const nearCount = Math.floor(220 * vegetation);
-      for (let i = 0; i < nearCount; i++) {
-        const s = this.start + sideRng() * CHUNK;
-        const offsetDist = 10.4 + Math.pow(sideRng(), 1.22) * 9.6;
+      // 1. Roadside Verge Carpet (10.3-15.5m): short, manicured roadside rough directly hugging the shoulder
+      // Stratified slices ensure continuous dense roadside framing with zero bare patches
+      const vergeSlices = Math.floor(340 * vegetation);
+      for (let i = 0; i < vergeSlices; i++) {
+        const s = this.start + ((i + sideRng() * 0.9) / vergeSlices) * CHUNK;
+        const offsetDist = 10.3 + Math.pow(sideRng(), 0.9) * 5.2;
         const offset = side * offsetDist;
         const w = road.weights(s);
         if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
+
         const pos = groundPoint(s, offset);
         if (pos.y < 8) continue;
 
-        const scale = 1.05 + sideRng() * 0.45;
+        // Compact short verge grass footprint (0.58-0.78m height)
+        const scale = 0.72 + sideRng() * 0.24;
         const rot = sideRng() * Math.PI * 2;
         batch.add('grass-near', m.meadowClumpShape, m.meadowClump, pos.x, pos.y, pos.z, scale, scale, scale, rot);
       }
 
-      // Sparse weed accents (rare accents placed in natural irregular clusters, not field coverage)
-      const weedAccentCount = Math.floor(2 * vegetation);
-      for (let wIdx = 0; wIdx < weedAccentCount; wIdx++) {
-        const s = this.start + sideRng() * CHUNK;
-        const offset = side * (18.0 + sideRng() * 24.0);
-        const w = road.weights(s);
-        if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
-        const pos = groundPoint(s, offset);
-        if (pos.y < 8) continue;
-        const weedScale = 0.85 + sideRng() * 0.35;
-        this.assets?.add(batch, 'weed', 'undergrowth', pos.x, pos.y, pos.z, weedScale, sideRng() * Math.PI * 2);
+      // 2. Dense Continuous Meadow Carpet (14.0-32.0m): interlocking grassland base
+      // Stratified 2D grid jitter ensures complete ground coverage without void pockets
+      const meadowSlices = Math.floor(270 * vegetation);
+      const lanesPerSlice = 5;
+      for (let i = 0; i < meadowSlices; i++) {
+        const sBase = this.start + (i / meadowSlices) * CHUNK;
+        for (let l = 0; l < lanesPerSlice; l++) {
+          const s = sBase + ((l + sideRng()) / lanesPerSlice) * (CHUNK / meadowSlices);
+          const laneMin = 14.0 + (l / lanesPerSlice) * 18.0;
+          const offsetDist = laneMin + (sideRng() * (18.0 / lanesPerSlice));
+          const offset = side * offsetDist;
+          const w = road.weights(s);
+          if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
+
+          const pos = groundPoint(s, offset);
+          if (pos.y < 8) continue;
+
+          // Full meadow grass footprint (0.85-1.15m span, natural height variations)
+          const scale = 0.88 + sideRng() * 0.30;
+          const rot = sideRng() * Math.PI * 2;
+          batch.add('meadow-mid', m.meadowClumpShape, m.meadowClump, pos.x, pos.y, pos.z, scale, scale, scale, rot);
+        }
       }
 
-      // Mid meadow (17-88m): continuous rolling meadow drifts with natural organic density variation
-      const fieldCount = Math.floor(260 * vegetation);
-      for (let i = 0; i < fieldCount; i++) {
-        const s = this.start + sideRng() * CHUNK;
-        const offsetDist = 17.0 + Math.pow(sideRng(), 1.35) * 71.0;
-        const offset = side * offsetDist;
-        const w = road.weights(s);
-        if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
+      // 3. Meadow Transition Extension (31.0-46.0m): seamless continuity into distance shader fade
+      const transSlices = Math.floor(180 * vegetation);
+      const lanesTrans = 3;
+      for (let i = 0; i < transSlices; i++) {
+        const sBase = this.start + (i / transSlices) * CHUNK;
+        for (let l = 0; l < lanesTrans; l++) {
+          const s = sBase + ((l + sideRng()) / lanesTrans) * (CHUNK / transSlices);
+          const offsetDist = 31.0 + ((l + sideRng()) / lanesTrans) * 15.0;
+          const offset = side * offsetDist;
+          const w = road.weights(s);
+          if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
 
-        // Seeded density drift: natural clustering into colonies and open pasture clearings
-        const driftNoise = Math.sin(s * 0.045 + offset * 0.035 + index) * 0.5 + 0.5;
-        if (sideRng() > 0.28 + driftNoise * 0.68) continue;
+          const pos = groundPoint(s, offset);
+          if (pos.y < 8) continue;
 
-        const pos = groundPoint(s, offset);
-        if (pos.y < 8) continue;
-
-        const scale = 1.15 + sideRng() * 0.55;
-        const rot = sideRng() * Math.PI * 2;
-        batch.add('meadow-mid', m.meadowClumpShape, m.meadowClump, pos.x, pos.y, pos.z, scale, scale, scale, rot);
+          const scale = 0.90 + sideRng() * 0.28;
+          const rot = sideRng() * Math.PI * 2;
+          batch.add('meadow-mid', m.meadowClumpShape, m.meadowClump, pos.x, pos.y, pos.z, scale, scale, scale, rot);
+        }
       }
     }
 
@@ -481,7 +490,7 @@ export class WorldChunk {
 
   grid(s0: number, s1: number, offsets: number[], material: THREE.Material, height: (s: number, o: number) => number, colored = false, uv = false) {
     const positions: number[] = [], colors: number[] = [], normals:number[]=[], uvs: number[] = [], indices: number[] = [], rows = Math.ceil((s1 - s0) / 8), n = offsets.length;
-    const grass = new THREE.Color(0x727b4c), sand = new THREE.Color(0xd1bb91), rock = new THREE.Color(0x88877b), soil = new THREE.Color(0x86765c), wet = new THREE.Color(0x807761), tint=new THREE.Color();
+    const grass = new THREE.Color(0x485a26), sand = new THREE.Color(0xbfa579), rock = new THREE.Color(0x6e6c64), soil = new THREE.Color(0x3e382b), wet = new THREE.Color(0x4a4436), tint=new THREE.Color();
     const alongTangent=new THREE.Vector3(),acrossTangent=new THREE.Vector3(),normal=new THREE.Vector3();
 
     for (let j = 0; j <= rows; j++) {

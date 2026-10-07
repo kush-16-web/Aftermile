@@ -92,42 +92,47 @@ export class Materials {
     const uvs: number[] = [];
     const indices: number[] = [];
 
-    // 3 intersecting vertical quads at 60 degree increments forming a volumetric 360-degree star clump
-    const angles = [0, Math.PI / 3, (2 * Math.PI) / 3];
-    const hw = 0.68; // ~1.36m total unscaled clump width for full horizontal ground coverage
-    const h = 0.92;  // ~0.92m clump height
-    const baseSink = 0.05; // 5cm ground sink to anchor naturally without hovering on hill slopes
+    // 2 intersecting vertical quads forming an ultra-efficient X-card (4 triangles, 8 vertices)
+    // Diagonals at 45 degrees provide full 360-degree volumetric profile from any camera angle
+    const hw = 0.44; // ~0.88m card width (1.25m diagonal span) for full interlocking ground coverage
+    const h = 0.44;  // ~0.44m natural meadow grass height
+    const baseSink = 0.05; // 5cm sink to anchor firmly into terrain without hovering on slopes
 
-    let vertOffset = 0;
-    for (const ang of angles) {
-      const dx = Math.cos(ang) * hw;
-      const dz = Math.sin(ang) * hw;
-      const nx = -Math.sin(ang);
-      const nz = Math.cos(ang);
+    const quads = [
+      { x0: -hw, z0: -hw, x1: hw, z1: hw, nx: -0.707, nz: 0.707 },
+      { x0: -hw, z0: hw, x1: hw, z1: -hw, nx: 0.707, nz: 0.707 },
+    ];
+
+    let vIdx = 0;
+    for (const q of quads) {
+      // Soft hemispherical normal for natural sky/sun lighting and warm grazing sunlight
+      const ny = 0.80;
+      const nx = q.nx * 0.42;
+      const nz = q.nz * 0.42;
 
       // 0: bottom-left
-      positions.push(-dx, -baseSink, -dz);
-      normals.push(nx * 0.35, 0.85, nz * 0.35);
+      positions.push(q.x0, -baseSink, q.z0);
+      normals.push(nx, ny, nz);
       uvs.push(0, 0);
 
       // 1: bottom-right
-      positions.push(dx, -baseSink, dz);
-      normals.push(nx * 0.35, 0.85, nz * 0.35);
+      positions.push(q.x1, -baseSink, q.z1);
+      normals.push(nx, ny, nz);
       uvs.push(1, 0);
 
       // 2: top-right
-      positions.push(dx, h, dz);
-      normals.push(nx * 0.35, 0.85, nz * 0.35);
+      positions.push(q.x1, h, q.z1);
+      normals.push(nx, ny, nz);
       uvs.push(1, 1);
 
       // 3: top-left
-      positions.push(-dx, h, -dz);
-      normals.push(nx * 0.35, 0.85, nz * 0.35);
+      positions.push(q.x0, h, q.z0);
+      normals.push(nx, ny, nz);
       uvs.push(0, 1);
 
-      indices.push(vertOffset, vertOffset + 1, vertOffset + 2);
-      indices.push(vertOffset, vertOffset + 2, vertOffset + 3);
-      vertOffset += 4;
+      indices.push(vIdx, vIdx + 1, vIdx + 2);
+      indices.push(vIdx, vIdx + 2, vIdx + 3);
+      vIdx += 4;
     }
 
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -168,94 +173,116 @@ export class Materials {
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.moveTo(rootX - baseW * 0.5, rootY);
-      ctx.quadraticCurveTo(curveX - baseW * 0.2, midY, tipX, tipY);
-      ctx.quadraticCurveTo(curveX + baseW * 0.2, midY, rootX + baseW * 0.5, rootY);
+      ctx.quadraticCurveTo(curveX - baseW * 0.25, midY, tipX, tipY);
+      ctx.quadraticCurveTo(curveX + baseW * 0.25, midY, rootX + baseW * 0.5, rootY);
       ctx.closePath();
       ctx.fill();
     };
 
     const drawVariant = (cellIdx: number, style: 'fine' | 'tall' | 'straw' | 'flower') => {
       const startX = cellIdx * cellWidth;
-      const centerX = startX + 64;
-      let seed = (cellIdx + 1) * 31337;
+      let seed = (cellIdx + 1) * 49297;
       const rnd = () => {
         seed = (seed * 1664525 + 1013904223) >>> 0;
         return seed / 4294967296;
       };
 
-      const bladeCount = style === 'fine' ? 56 : style === 'tall' ? 46 : style === 'straw' ? 52 : 50;
+      // 1. Base turf understory: dense, interlocking blades across the entire card width
+      // Forms an opaque base carpet that anchors the grass and covers the ground underneath
+      const baseBladeCount = 54;
+      for (let j = 0; j < baseBladeCount; j++) {
+        const rootX = startX + 2 + (j / (baseBladeCount - 1)) * 124 + (rnd() - 0.5) * 4;
+        const rootY = 256;
+        const bladeH = 45 + rnd() * 65;
+        const tipY = 256 - bladeH;
+        const spread = (rnd() - 0.5) * 1.6;
+        const tipX = rootX + spread * 20;
+        const curveX = (rootX + tipX) * 0.5;
+        const baseW = 4.5 + rnd() * 2.5;
 
-      // 1. Draw back & mid-layer blades with broad fountain spread across full 128px cell
+        const colorRoot = style === 'straw' ? '#5a5830' : '#465626';
+        const colorTip = style === 'straw' ? '#78723c' : '#5c7030';
+        drawBlade(rootX, rootY, tipX, tipY, curveX, baseW, colorRoot, colorTip);
+      }
+
+      // 2. Main blade canopy: continuous swath of blades extending across the full 128px cell
+      const bladeCount = style === 'fine' ? 70 : style === 'tall' ? 62 : style === 'straw' ? 66 : 64;
       for (let i = 0; i < bladeCount; i++) {
-        // Roots clustered at base
-        const rootX = centerX + (rnd() - 0.5) * 48;
+        // Uniform distribution across entire 128px card width with subtle jitter
+        const rootX = startX + 3 + (i / (bladeCount - 1)) * 122 + (rnd() - 0.5) * 3;
         const rootY = 256;
 
-        // Normalized horizontal spread from -1 (far left) to +1 (far right)
-        const spread = (i / (bladeCount - 1) - 0.5) * 2.0 + (rnd() - 0.5) * 0.25;
-
-        // Heights vary: tall in center, curving lower on outer edges
-        const centerFactor = 1.0 - Math.abs(spread) * 0.42;
-        const maxH = style === 'tall' ? 228 : 192;
-        const bladeH = (maxH * centerFactor) * (0.65 + rnd() * 0.35);
+        // Level, slightly undulating top canopy (no triangular drop at edges)
+        const wave = Math.sin((i / bladeCount) * Math.PI * 3) * 18;
+        const maxH = style === 'tall' ? 220 : 185;
+        const bladeH = Math.max(90, Math.min(240, maxH + wave + (rnd() - 0.5) * 45));
         const tipY = 256 - bladeH;
 
-        // Curve outward in direction of spread
-        const arch = spread * (style === 'tall' ? 54 : 46) + (rnd() - 0.5) * 16;
-        const tipX = centerX + spread * 50 + arch;
-        const curveX = (rootX + tipX) * 0.5 + arch * 0.35;
-        const baseW = 6.0 + rnd() * 3.0;
+        // Natural outward curve
+        const curveDir = (rnd() - 0.5) * 2.0;
+        const arch = curveDir * (style === 'tall' ? 32 : 24);
+        const tipX = rootX + arch;
+        const curveX = (rootX + tipX) * 0.5 + curveDir * 8;
+        const baseW = 4.0 + rnd() * 2.5;
 
-        let colorRoot = '#273817';
-        let colorTip = '#789838';
+        // Exact sRGB colors yielding linear albedo matching TerrainMaterial autumnTone
+        let colorRoot = '#52642a';
+        let colorTip = '#7c9644';
 
         if (style === 'straw') {
-          colorRoot = '#4d4628';
-          colorTip = rnd() > 0.4 ? '#9d945a' : '#887d48';
+          colorRoot = '#5e5a30';
+          colorTip = rnd() > 0.4 ? '#98924e' : '#888242';
         } else if (style === 'tall') {
-          colorRoot = '#263b1a';
-          colorTip = '#829c42';
+          colorRoot = '#4c5e26';
+          colorTip = '#86a24a';
         } else if (style === 'flower') {
-          colorRoot = '#223414';
-          colorTip = '#6f8f36';
+          colorRoot = '#506228';
+          colorTip = '#7a9442';
         }
 
         drawBlade(rootX, rootY, tipX, tipY, curveX, baseW, colorRoot, colorTip);
 
-        // Seed heads on tall grass
-        if (style === 'tall' && i % 6 === 0 && Math.abs(spread) < 0.6) {
-          ctx.strokeStyle = '#b2c46a';
-          ctx.lineWidth = 3.0;
+        // Seed heads on tall wild grass
+        if (style === 'tall' && i % 7 === 0 && tipY < 130) {
+          ctx.strokeStyle = '#b8cc72';
+          ctx.lineWidth = 2.4;
           ctx.beginPath();
           ctx.moveTo(tipX, tipY);
-          ctx.lineTo(tipX + (rnd() - 0.5) * 6, tipY - 14);
+          ctx.lineTo(tipX + (rnd() - 0.5) * 5, tipY - 12);
           ctx.stroke();
         }
 
-        // Tiny delicate flower buds on flower variant
-        if (style === 'flower' && i % 5 === 0 && tipY < 180) {
+        // Tiny restrained meadow flowers on flower variant
+        if (style === 'flower' && i % 6 === 0 && tipY < 160) {
           const fx = tipX + (rnd() - 0.5) * 4;
-          const fy = tipY + 4 + rnd() * 8;
-          ctx.fillStyle = i % 2 === 0 ? '#fdf8ea' : '#ffe169';
-          ctx.beginPath();
-          ctx.arc(fx, fy, 2.8, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
+          const fy = tipY + 4 + rnd() * 12;
 
-      // 2. Base foliage tuft: dense short blades hugging the bottom to anchor the clump to the ground
-      for (let j = 0; j < 32; j++) {
-        const rootX = centerX + (rnd() - 0.5) * 60;
-        const rootY = 256;
-        const bladeH = 50 + rnd() * 50;
-        const tipY = 256 - bladeH;
-        const spread = (rnd() - 0.5) * 2.0;
-        const tipX = rootX + spread * 32;
-        const curveX = (rootX + tipX) * 0.5;
-        const baseW = 5.0 + rnd() * 3.0;
-        const colorRoot = style === 'straw' ? '#453e24' : '#233215';
-        const colorTip = style === 'straw' ? '#786e40' : '#59752d';
-        drawBlade(rootX, rootY, tipX, tipY, curveX, baseW, colorRoot, colorTip);
+          // Subtle palette: delicate white daisies, pale buttercup yellows, and pale sky blue forget-me-nots
+          const flowerType = (i / 6) % 3;
+          if (flowerType === 0) {
+            // White daisy with tiny yellow eye
+            ctx.fillStyle = '#faf8ee';
+            ctx.beginPath();
+            ctx.arc(fx, fy, 2.4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#e2bc3b';
+            ctx.beginPath();
+            ctx.arc(fx, fy, 1.0, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (flowerType === 1) {
+            // Pale buttercup yellow
+            ctx.fillStyle = '#fde76c';
+            ctx.beginPath();
+            ctx.arc(fx, fy, 2.0, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // Subtle pale sky blue
+            ctx.fillStyle = '#92c4ea';
+            ctx.beginPath();
+            ctx.arc(fx, fy, 1.9, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
       }
     };
 
@@ -299,8 +326,8 @@ export class Materials {
         vWorldClumpPos.z -= terrainOrigin;
         vClumpDist = distance(cameraPosition.xz, worldPos.xz);
 
-        // Smooth distance shrink fade from 110m to 150m (zero visual popping into matching terrain)
-        float distFade = 1.0 - smoothstep(110.0, 150.0, vClumpDist);
+        // Smooth distance shrink fade from 34m to 48m (seamlessly transferring into matching terrain)
+        float distFade = 1.0 - smoothstep(34.0, 48.0, vClumpDist);
         transformed.y *= distFade;
 
         // Select atlas variant (0, 1, 2, 3) deterministically from instance position
@@ -328,23 +355,19 @@ export class Materials {
         '#include <color_fragment>',
         `
         #include <color_fragment>
-        // Subtle position-based color variation matching terrain meadow drifts
+        // Position-based subtle grass tint variation matching terrain meadow drifts
         float posHash = fract(sin(dot(vWorldClumpPos.xz, vec2(0.0713, 0.0437))) * 43758.5453);
-        vec3 lushTint = vec3(1.02, 1.05, 0.94);
-        vec3 sunlitTint = vec3(1.12, 1.10, 0.88);
-        vec3 dryTint = vec3(1.08, 1.00, 0.82);
+        vec3 lushTint = vec3(1.00, 1.02, 0.98);
+        vec3 sunlitTint = vec3(1.06, 1.05, 0.94);
+        vec3 dryTint = vec3(1.08, 1.02, 0.88);
         vec3 naturalVar = mix(lushTint, sunlitTint, posHash);
-        naturalVar = mix(naturalVar, dryTint, smoothstep(0.65, 1.0, posHash));
+        naturalVar = mix(naturalVar, dryTint, smoothstep(0.60, 1.0, posHash));
         diffuseColor.rgb *= naturalVar;
 
-        // Autumn color transition: golden-olive, dried straw, and warm amber-tan
+        // Autumn color grading matching TerrainMaterial exactly without artificial darkening
         if (terrainAutumn > 0.01) {
-          vec3 autumnOlive = vec3(0.72, 0.68, 0.34);
-          vec3 autumnStraw = vec3(0.92, 0.82, 0.44);
-          vec3 autumnTan = vec3(0.80, 0.65, 0.38);
-          vec3 autumnGrass = mix(autumnOlive, autumnStraw, posHash);
-          autumnGrass = mix(autumnGrass, autumnTan, smoothstep(0.5, 0.9, posHash));
-          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * autumnGrass * 1.45, terrainAutumn * 0.90);
+          vec3 autumnShift = mix(vec3(0.98, 1.01, 0.92), vec3(1.15, 1.10, 0.82), posHash);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * autumnShift, terrainAutumn * 0.90);
         }
 
         // Snow and rain integration
@@ -353,7 +376,7 @@ export class Materials {
         `
       );
     };
-    mat.customProgramCacheKey = () => 'aftermile-meadow-clump-v1';
+    mat.customProgramCacheKey = () => 'aftermile-meadow-clump-v8';
   }
 
   private setupWindShader(mat: THREE.MeshStandardMaterial, strength: number) {

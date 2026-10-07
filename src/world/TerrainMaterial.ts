@@ -64,56 +64,63 @@ export class TerrainMaterial extends THREE.MeshStandardMaterial {
       `);
 
       shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
-        // Multi-tier natural grassland composition matching near 3D grass clumps
         vec2 pos = vTerrainWorld.xz;
-        float macroFields = terrainNoise(pos * 0.0016);
-        float meadowDrift = terrainFbm(pos * 0.011 + vec2(2.1, 4.7));
-        float turfClumps = terrainNoise(pos * 0.18);
-        float fineClumpTexture = terrainNoise(pos * 0.72);
-        float microBladeGrain = terrainNoise(pos * 3.4);
-
-        // Anti-aliased micro grain falloff with distance
         float grainFade = clamp(1.0 - vCamDist * 0.006, 0.0, 1.0);
-        microBladeGrain = mix(0.5, microBladeGrain, grainFade);
 
-        // 4 Harmonic Meadow Field Biomes matching 3D grass clumps:
-        // 1. Green Meadow (lush clover & rye in fertile hollows)
-        vec3 greenMeadow = vec3(0.38, 0.48, 0.22);
-        // 2. Open Pasture (vibrant sunlit yellow-green)
-        vec3 sunlitPasture = vec3(0.52, 0.60, 0.28);
-        // 3. Wild Meadow (warm sage-olive & mixed field grasses)
-        vec3 wildMeadow = vec3(0.46, 0.52, 0.25);
-        // 4. Dry Meadow (sun-cured golden straw grass on ridges)
-        vec3 dryMeadow = vec3(0.64, 0.58, 0.32);
-        // Moist loam soil in low tufts
-        vec3 loamSoil = vec3(0.36, 0.30, 0.20);
+        // Realistic pasture-scale noise wavelengths (visible across 50m - 300m fields)
+        float macroFields = terrainNoise(pos * 0.018);
+        float meadowDrift = terrainFbm(pos * 0.045 + vec2(1.7, 3.2));
+        float turfClumps = terrainNoise(pos * 0.22);
+        float fineClumpTexture = terrainNoise(pos * 0.75);
+
+        // 4 Harmonic Meadow Field Biomes matching 3D grass cards precisely:
+        // 1. Lush Green Pasture (fertile lowlands)
+        vec3 greenMeadow = vec3(0.18, 0.28, 0.10);
+        // 2. Open Sunlit Meadow (warm golden-olive)
+        vec3 sunlitPasture = vec3(0.24, 0.32, 0.11);
+        // 3. Mixed Field Grasses (sage-olive)
+        vec3 wildMeadow = vec3(0.20, 0.28, 0.11);
+        // 4. Sun-cured Golden Straw (wind-swept ridges)
+        vec3 dryMeadow = vec3(0.26, 0.30, 0.13);
+        // Rich damp turf undertone
+        vec3 loamFloor = vec3(0.14, 0.20, 0.08);
 
         vec3 fieldColor = mix(greenMeadow, sunlitPasture, meadowDrift);
         fieldColor = mix(fieldColor, wildMeadow, smoothstep(0.35, 0.65, macroFields));
         fieldColor = mix(fieldColor, dryMeadow, smoothstep(0.65, 0.95, macroFields) * 0.65);
-        fieldColor = mix(fieldColor, loamSoil, (1.0 - turfClumps) * 0.22);
+        fieldColor = mix(fieldColor, loamFloor, (1.0 - turfClumps) * 0.25);
 
-        // Clump lighting breakup: mimics the self-shadowing of dense grass clumps into the distance
-        float clumpShadow = 0.82 + turfClumps * 0.24 + fineClumpTexture * 0.14 + microBladeGrain * 0.06;
-        diffuseColor.rgb *= clumpShadow;
-        diffuseColor.rgb = mix(diffuseColor.rgb, fieldColor * diffuseColor.rgb * 1.85, 0.58);
+        // Multi-scale natural meadow structure:
+        // 1. Pastoral mowing / swathing waves (25m scale)
+        float pastureSwath = sin(pos.x * 0.05 + sin(pos.y * 0.035) * 1.8) * 0.08;
+        // 2. Natural turf clumping & uneven growth (4-10m scale)
+        float clumping = (terrainNoise(pos * 0.18) - 0.5) * 0.14 + (terrainNoise(pos * 0.45) - 0.5) * 0.09;
+        // 3. Fine grass blade grain (fades smoothly with distance to prevent aliasing)
+        float bladeGrain = (terrainNoise(pos * 1.8) - 0.5) * 0.12 * grainFade;
+        float turfStructure = pastureSwath + clumping + bladeGrain;
 
-        // Autumn mode: restrained, authentic countryside ecology (olive, golden green, straw yellow, dry tan)
-        // Strictly avoids neon orange or bleached yellow plates
-        if (terrainAutumn > 0.01) {
-          vec3 autumnOlive = vec3(0.48, 0.54, 0.24);
-          vec3 autumnGold = vec3(0.62, 0.56, 0.28);
-          vec3 autumnStraw = vec3(0.70, 0.62, 0.32);
-          vec3 autumnTan = vec3(0.54, 0.46, 0.28);
-          vec3 autumnEarth = vec3(0.38, 0.32, 0.22);
+        vec3 meadowBase = fieldColor * (1.0 + turfStructure);
 
-          vec3 autumnTone = mix(autumnOlive, autumnGold, meadowDrift);
-          autumnTone = mix(autumnTone, autumnStraw, smoothstep(0.4, 0.8, macroFields) * 0.70);
-          autumnTone = mix(autumnTone, autumnTan, (1.0 - turfClumps) * 0.35);
-          autumnTone = mix(autumnTone, autumnEarth, (1.0 - fineClumpTexture) * 0.20);
+        // Precise grassland detection: green dominant over red (rocks are neutral gray, sand is red-dominant)
+        float isGrassland = smoothstep(0.005, 0.030, diffuseColor.g - diffuseColor.r);
 
-          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * autumnTone * 1.62, terrainAutumn * 0.90);
-        }
+        // Autumn mode: authentic countryside grassland (muted green, olive, golden green, straw)
+        // Strictly green-dominant (G > R) to avoid orange/peach ground while preserving autumn separation
+        vec3 autumnOlive = vec3(0.20, 0.30, 0.11);
+        vec3 autumnGold = vec3(0.24, 0.32, 0.12);
+        vec3 autumnStraw = vec3(0.27, 0.30, 0.13);
+        vec3 autumnDeep = vec3(0.16, 0.26, 0.10);
+        vec3 autumnFloor = vec3(0.14, 0.21, 0.08);
+
+        vec3 autumnTone = mix(autumnOlive, autumnGold, meadowDrift);
+        autumnTone = mix(autumnTone, autumnStraw, smoothstep(0.4, 0.8, macroFields) * 0.65);
+        autumnTone = mix(autumnTone, autumnDeep, (1.0 - turfClumps) * 0.25);
+        autumnTone = mix(autumnTone, autumnFloor, (1.0 - fineClumpTexture) * 0.18);
+
+        vec3 autumnMeadow = autumnTone * (1.0 + turfStructure);
+
+        vec3 targetMeadow = terrainAutumn > 0.01 ? autumnMeadow : meadowBase;
+        diffuseColor.rgb = mix(diffuseColor.rgb, targetMeadow, isGrassland);
 
         // Rain wetness darkening
         diffuseColor.rgb *= 1.0 - terrainWet * 0.22;
@@ -129,6 +136,6 @@ export class TerrainMaterial extends THREE.MeshStandardMaterial {
   }
 
   customProgramCacheKey() {
-    return 'aftermile-terrain-v3';
+    return 'aftermile-terrain-v8';
   }
 }
