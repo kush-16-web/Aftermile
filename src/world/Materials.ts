@@ -65,13 +65,13 @@ export class Materials {
     this.grassShape.computeVertexNormals();
 
     // A small asymmetric leaf silhouette used for settled litter beneath
-    // canopies. It is shared and instanced like the rest of the world detail.
+    // canopies. Instanced with natural leaf proportions (~0.14m).
     const leaf = new THREE.Shape();
-    leaf.moveTo(0, -0.55);
-    leaf.quadraticCurveTo(0.42, -0.28, 0.32, 0.18);
-    leaf.quadraticCurveTo(0.18, 0.48, 0, 0.58);
-    leaf.quadraticCurveTo(-0.18, 0.48, -0.32, 0.18);
-    leaf.quadraticCurveTo(-0.42, -0.28, 0, -0.55);
+    leaf.moveTo(0, -0.07);
+    leaf.quadraticCurveTo(0.05, -0.035, 0.04, 0.02);
+    leaf.quadraticCurveTo(0.02, 0.06, 0, 0.07);
+    leaf.quadraticCurveTo(-0.02, 0.06, -0.04, 0.02);
+    leaf.quadraticCurveTo(-0.05, -0.035, 0, -0.07);
     this.leafGroundShape = new THREE.ShapeGeometry(leaf);
 
     // Attach vertex shader swaying to foliage materials

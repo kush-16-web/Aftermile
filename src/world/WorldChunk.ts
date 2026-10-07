@@ -307,74 +307,84 @@ export class WorldChunk {
 
       // Settled autumn leaf litter beneath broadleaf canopies
       if (!tree.pine) {
-        const patchCount = 3 + Math.floor(tree.leafLoad * 5);
+        const patchCount = 3 + Math.floor(tree.leafLoad * 4);
         for (let patch = 0; patch < patchCount; patch++) {
-          const angle = random() * Math.PI * 2,
-            radius = (0.35 + random() * 1.25) * tree.canopyRadius;
-          const patchS = tree.s + Math.cos(angle) * radius,
-            patchO = tree.offset + Math.sin(angle) * radius;
+          const angle = random() * Math.PI * 2;
+          const radius = (0.22 + random() * 0.68) * tree.canopyRadius;
+          const patchS = tree.s + Math.cos(angle) * radius;
+          const patchO = tree.offset + Math.sin(angle) * radius;
+          // Road asphalt leaves: only possible if canopy actually extends over/near the shoulder
+          if (Math.abs(patchO) < 10.5 && Math.abs(tree.offset) > tree.canopyRadius + 6) continue;
           const patchPos = groundPoint(patchS, patchO);
-          batch.add(
-            'fallen-leaf',
-            m.leafGroundShape,
-            m.leaf,
-            patchPos.x,
-            patchPos.y + 0.018,
-            patchPos.z,
-            0.45 + random() * 0.55,
-            0.45 + random() * 0.55,
-            0.45 + random() * 0.55,
-            random() * Math.PI * 2,
-            -Math.PI / 2
-          );
+          if (patchPos.y >= 8) {
+            batch.add(
+              'fallen-leaf',
+              m.leafGroundShape,
+              m.leaf,
+              patchPos.x,
+              patchPos.y + 0.018,
+              patchPos.z,
+              0.85 + random() * 0.45,
+              0.85 + random() * 0.45,
+              0.85 + random() * 0.45,
+              random() * Math.PI * 2,
+              -Math.PI / 2
+            );
+          }
         }
       }
     }
 
     // 9. LAYERED REAL GRASSLAND SYSTEM
     // Grass extends seamlessly from the roadside verge into the open field.
-    // Near field (0-25m): detailed grass tufts and roadside weeds
-    // Mid field (25-110m): larger photogrammetric grass clusters
-    const nearGrassCount = Math.floor(55 * vegetation);
-    for (let i = 0; i < nearGrassCount; i++) {
-      const s = this.start + random() * CHUNK,
-        side = random() > 0.5 ? 1 : -1;
-      const offset = side * (13 + Math.pow(random(), 1.5) * 32),
-        w = road.weights(s);
-      if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
-      const pos = groundPoint(s, offset);
-      if (pos.y < 8) continue;
-      const isWeed = random() > 0.88;
-      const kind = isWeed ? 'weed' : 'grass_near';
-      const scale = isWeed ? 0.75 + random() * 0.45 : 0.85 + random() * 0.55;
-      if (this.assets?.add(batch, kind, 'grass-near', pos.x, pos.y, pos.z, scale, random() * Math.PI * 2)) continue;
-      batch.add('ground-cover', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, random() * Math.PI * 2);
-    }
+    // Independent streams for Left and Right sides prevent alternating or mirrored placement.
+    const grassSides = [-1, 1];
+    for (const side of grassSides) {
+      const sideRng = rng(index * 211 + (side === 1 ? 503 : 919));
 
-    const fieldGrassCount = Math.floor(45 * vegetation);
-    for (let i = 0; i < fieldGrassCount; i++) {
-      const s = this.start + random() * CHUNK,
-        side = random() > 0.5 ? 1 : -1;
-      const offset = side * (26 + Math.pow(random(), 1.6) * 95),
-        w = road.weights(s);
-      if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
-      const pos = groundPoint(s, offset);
-      if (pos.y < 8) continue;
-      const scale = 0.9 + random() * 0.7;
-      if (this.assets?.add(batch, 'grass_field', 'grass-field', pos.x, pos.y, pos.z, scale, random() * Math.PI * 2)) continue;
-      batch.add('mid-grass', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, random() * Math.PI * 2);
+      // Near field (12-38m): detailed grass tufts and roadside weeds
+      const nearCount = Math.floor(32 * vegetation);
+      for (let i = 0; i < nearCount; i++) {
+        const s = this.start + sideRng() * CHUNK;
+        const offset = side * (12.5 + Math.pow(sideRng(), 1.4) * 26);
+        const w = road.weights(s);
+        if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
+        const pos = groundPoint(s, offset);
+        if (pos.y < 8) continue;
+        const isWeed = sideRng() > 0.85;
+        const kind = isWeed ? 'weed' : 'grass_near';
+        const scale = isWeed ? 0.75 + sideRng() * 0.45 : 0.85 + sideRng() * 0.55;
+        if (this.assets?.add(batch, kind, 'grass-near', pos.x, pos.y, pos.z, scale, sideRng() * Math.PI * 2)) continue;
+        batch.add('ground-cover', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, sideRng() * Math.PI * 2);
+      }
+
+      // Mid field (28-120m): larger photogrammetric grass clusters continuing into the meadow
+      const fieldCount = Math.floor(26 * vegetation);
+      for (let i = 0; i < fieldCount; i++) {
+        const s = this.start + sideRng() * CHUNK;
+        const offset = side * (28 + Math.pow(sideRng(), 1.5) * 92);
+        const w = road.weights(s);
+        if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
+        const pos = groundPoint(s, offset);
+        if (pos.y < 8) continue;
+        const scale = 0.9 + sideRng() * 0.7;
+        if (this.assets?.add(batch, 'grass_field', 'grass-field', pos.x, pos.y, pos.z, scale, sideRng() * Math.PI * 2)) continue;
+        batch.add('mid-grass', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, sideRng() * Math.PI * 2);
+      }
     }
 
     // 10. Coastal Boulders & Rock Formations
     const rockCount = vista > 0.4 ? 0 : isCoast ? 6 : isMountain ? 3 : 0;
+    const rockRng = rng(index * 97 + 31);
     for (let i = 0; i < rockCount; i++) {
-      const s = this.start + random() * CHUNK,
-        o = (random() > 0.5 ? 1 : -1) * (28 + random() * 240),
-        v = groundPoint(s, o);
+      const s = this.start + rockRng() * CHUNK;
+      const rockSide = rockRng() > 0.5 ? 1 : -1;
+      const o = rockSide * (28 + rockRng() * 240);
+      const v = groundPoint(s, o);
       if (v.y < 8) continue;
-      const sz = 1.4 + random() * 5.0;
-      if (!this.assets?.add(batch, 'rock', 'coastal-rock', v.x, v.y, v.z, sz / 2.8, random() * Math.PI * 2))
-        batch.add('rocks', m.sphere, m.rock, v.x, v.y, v.z, sz * 1.6, sz * 0.65, sz, random() * 6);
+      const sz = 1.4 + rockRng() * 5.0;
+      if (!this.assets?.add(batch, 'rock', 'coastal-rock', v.x, v.y, v.z, sz / 2.8, rockRng() * Math.PI * 2))
+        batch.add('rocks', m.sphere, m.rock, v.x, v.y, v.z, sz * 1.6, sz * 0.65, sz, rockRng() * 6);
     }
 
     // 10. City Architecture (Close-Range Inner City blocks)

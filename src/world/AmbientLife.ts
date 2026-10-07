@@ -54,19 +54,7 @@ export class AmbientLife {
       scene.add(boat);
     }
 
-    // Dynamic Bird Flock (11 birds in V-formation)
-    for (let i = 0; i < 11; i++) {
-      const bird = new THREE.Group();
-      // Body
-      box(bird, 0.35, 0.2, 0.9, 0, 0, 0, m.dark);
-      // Left & Right articulated wings
-      for (const side of [-1, 1]) {
-        const wing = box(bird, 1.4, 0.05, 0.35, side * 0.7, 0, 0, m.dark);
-        wing.rotation.z = side * 0.2;
-      }
-      this.birds.push(bird);
-      scene.add(bird);
-    }
+    // Note: Primitive box birds removed; ambient wildlife audio trigger preserved.
   }
 
   update(time: number, s: number, origin: number, isDay: boolean = true, isStorm: boolean = false) {
@@ -124,34 +112,5 @@ export class AmbientLife {
       this.birdCallTimer = 18.0 + Math.random() * 15.0; // Avoid repetitive chirping
     }
     if (this.birdCallTimer > 0) this.birdCallTimer -= 0.016;
-
-    for (let i = 0; i < this.birds.length; i++) {
-      const b = this.birds[i];
-      // Hide birds during severe nighttime or storms
-      b.visible = !isStorm;
-
-      // V-Formation offsets: leader at i=0, left wing odd, right wing even
-      const wingSide = i === 0 ? 0 : (i % 2 === 1 ? -1 : 1);
-      const wingRank = Math.ceil(i / 2);
-      const localOffsetX = wingSide * wingRank * 4.2;
-      const localOffsetZ = -wingRank * 5.0;
-
-      // Rotate local offset by flock heading
-      const cosH = Math.cos(flockHeading);
-      const sinH = Math.sin(flockHeading);
-      const wx = localOffsetX * cosH - localOffsetZ * sinH;
-      const wz = localOffsetX * sinH + localOffsetZ * cosH;
-
-      const birdY = flockCenterY + Math.sin(time * 1.8 + i * 0.3) * 0.6 + wingRank * 0.3;
-      b.position.set(flockCenterX + wx, birdY, flockCenterZ + wz);
-      b.rotation.y = flockHeading;
-      b.rotation.z = bankAngle;
-
-      // Wing flapping animation
-      const flapPhase = time * 8.0 + i * 0.4;
-      const flapAngle = Math.sin(flapPhase) * 0.55;
-      if (b.children[1]) b.children[1].rotation.z = -flapAngle; // Left wing
-      if (b.children[2]) b.children[2].rotation.z = flapAngle;  // Right wing
-    }
   }
 }

@@ -65,11 +65,18 @@ export class TerrainMaterial extends THREE.MeshStandardMaterial {
         diffuseColor.rgb *= 0.72 + meadowPatches * 0.36 + grassClumps * 0.16 + microGrain * 0.08;
         diffuseColor.rgb = mix(diffuseColor.rgb, fieldColor * diffuseColor.rgb * 1.85, 0.48);
 
-        // Autumn mode: rich warm amber, golden straw, and burnt russet grassland
-        vec3 autumnMeadow = vec3(0.74, 0.56, 0.26);
-        vec3 autumnRusset = vec3(0.62, 0.38, 0.18);
-        vec3 autumnTone = mix(autumnMeadow, autumnRusset, macroFields);
-        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * autumnTone * 2.1, terrainAutumn * 0.88);
+        // Autumn mode: variegated ecology (muted olive, golden amber, straw yellow, warm russet, and dry loam)
+        vec3 autumnOlive = vec3(0.52, 0.58, 0.28);
+        vec3 autumnAmber = vec3(0.76, 0.58, 0.24);
+        vec3 autumnStraw = vec3(0.82, 0.72, 0.36);
+        vec3 autumnRusset = vec3(0.64, 0.40, 0.18);
+        vec3 autumnDry = vec3(0.50, 0.44, 0.30);
+
+        vec3 autumnTone = mix(autumnOlive, autumnAmber, meadowPatches);
+        autumnTone = mix(autumnTone, autumnStraw, macroFields * 0.6);
+        autumnTone = mix(autumnTone, autumnRusset, (1.0 - grassClumps) * 0.4);
+        autumnTone = mix(autumnTone, autumnDry, microGrain * 0.25);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * autumnTone * 2.05, terrainAutumn * 0.92);
 
         // Rain wetness darkening
         diffuseColor.rgb *= 1.0 - terrainWet * 0.22;
