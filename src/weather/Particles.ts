@@ -3,23 +3,9 @@ import type { WeatherState } from './Weather.ts';
 import type { LeafSource } from '../world/WorldChunk.ts';
 import { clamp, hash, lerp } from '../core/math.ts';
 
-const MAX_LEAVES = 40;
 const MAX_RAIN = 1800;
 const MAX_SNOW = 1200;
 const MAX_SPRAY = 200;
-
-interface LeafParticle {
-  x: number; y: number; z: number;
-  vx: number; vy: number; vz: number;
-  rotX: number; rotY: number; rotZ: number;
-  rotSpeedX: number; rotSpeedY: number; rotSpeedZ: number;
-  scale: number;
-  type: number; // 0..3
-  phase: number;
-  sourceKey: number;
-  settled: boolean;
-  settledTime: number;
-}
 
 interface SprayParticle {
   x: number; y: number; z: number;
@@ -44,12 +30,7 @@ export class Particles {
   private snowPositions = new Float32Array(MAX_SNOW * 3);
   private snowData: { x: number; y: number; z: number; speed: number; drift: number; phase: number }[] = [];
 
-  // Autumn Leaves System (Instanced Quads with 3D Tumbling and Car Wake Displacement)
-  private leafMesh: THREE.InstancedMesh;
-  private leafData: LeafParticle[] = [];
-  private leafDummy = new THREE.Object3D();
-  private leafTexture: THREE.CanvasTexture;
-  private activeLeafSources: LeafSource[] = [];
+  // Autumn Leaves System: Completely disabled per Rule #1 (Zero leaves in runtime)
 
   // Wet Tire Spray System
   private sprayMesh: THREE.InstancedMesh;
@@ -61,161 +42,6 @@ export class Particles {
     this.group.name = 'WeatherParticles';
     scene.add(this.group);
 
-    // ==========================================
-    // 1. PROCEDURAL ORGANIC AUTUMN LEAF TEXTURE
-    // ==========================================
-    const leafCanvas = document.createElement('canvas');
-    leafCanvas.width = 256;
-    leafCanvas.height = 256;
-    const lCtx = leafCanvas.getContext('2d')!;
-
-    // Draw 4 distinct leaf variants in a 2x2 grid
-    const leafConfigs = [
-      { cx: 64, cy: 64, col: '#f59e0b', type: 'maple' },
-      { cx: 192, cy: 64, col: '#ea580c', type: 'oak' },
-      { cx: 64, cy: 192, col: '#dc2626', type: 'scarlet' },
-      { cx: 192, cy: 192, col: '#b45309', type: 'birch' },
-    ];
-
-    for (const conf of leafConfigs) {
-      lCtx.save();
-      lCtx.translate(conf.cx, conf.cy);
-
-      // Organic Leaf Silhouette
-      lCtx.beginPath();
-      lCtx.fillStyle = conf.col;
-      lCtx.strokeStyle = 'rgba(60, 20, 5, 0.4)';
-      lCtx.lineWidth = 1.5;
-
-      if (conf.type === 'maple') {
-        // Multi-lobed Sugar Maple shape
-        lCtx.moveTo(0, -42);
-        lCtx.bezierCurveTo(15, -30, 36, -24, 38, -10);
-        lCtx.bezierCurveTo(24, -4, 32, 14, 30, 26);
-        lCtx.bezierCurveTo(16, 22, 6, 36, 0, 42);
-        lCtx.bezierCurveTo(-6, 36, -16, 22, -30, 26);
-        lCtx.bezierCurveTo(-32, 14, -24, -4, -38, -10);
-        lCtx.bezierCurveTo(-36, -24, -15, -30, 0, -42);
-      } else if (conf.type === 'oak') {
-        // Rounded Lobed Oak
-        lCtx.moveTo(0, -44);
-        lCtx.bezierCurveTo(18, -32, 28, -20, 22, -8);
-        lCtx.bezierCurveTo(34, 4, 28, 18, 22, 28);
-        lCtx.bezierCurveTo(12, 34, 4, 38, 0, 42);
-        lCtx.bezierCurveTo(-4, 38, -12, 34, -22, 28);
-        lCtx.bezierCurveTo(-28, 18, -34, 4, -22, -8);
-        lCtx.bezierCurveTo(-28, -20, -18, -32, 0, -44);
-      } else if (conf.type === 'scarlet') {
-        // Japanese Maple Star/Fan
-        lCtx.moveTo(0, -46);
-        lCtx.lineTo(12, -22); lCtx.lineTo(38, -20); lCtx.lineTo(18, -4);
-        lCtx.lineTo(32, 18); lCtx.lineTo(10, 14); lCtx.lineTo(0, 40);
-        lCtx.lineTo(-10, 14); lCtx.lineTo(-32, 18); lCtx.lineTo(-18, -4);
-        lCtx.lineTo(-38, -20); lCtx.lineTo(-12, -22);
-      } else {
-        // Birch teardrop / ovate
-        lCtx.moveTo(0, -45);
-        lCtx.bezierCurveTo(24, -25, 32, 8, 18, 30);
-        lCtx.bezierCurveTo(10, 38, 2, 42, 0, 45);
-        lCtx.bezierCurveTo(-2, 42, -10, 38, -18, 30);
-        lCtx.bezierCurveTo(-32, 8, -24, -25, 0, -45);
-      }
-
-      lCtx.closePath();
-      lCtx.fill();
-      lCtx.stroke();
-
-      // Veins
-      lCtx.beginPath();
-      lCtx.strokeStyle = 'rgba(255, 230, 180, 0.45)';
-      lCtx.lineWidth = 1.2;
-      lCtx.moveTo(0, 42);
-      lCtx.lineTo(0, -36);
-      lCtx.moveTo(0, 15); lCtx.lineTo(18, 0);
-      lCtx.moveTo(0, 15); lCtx.lineTo(-18, 0);
-      lCtx.moveTo(0, -8); lCtx.lineTo(16, -20);
-      lCtx.moveTo(0, -8); lCtx.lineTo(-16, -20);
-      lCtx.stroke();
-
-      lCtx.restore();
-    }
-
-    this.leafTexture = new THREE.CanvasTexture(leafCanvas);
-    this.leafTexture.colorSpace = THREE.SRGBColorSpace;
-
-    // Leaf Instanced Mesh (Double-sided plane with instance atlas shader)
-    // Scaled to realistic 5.5cm base quad, yielding subtle natural fluttering leaves
-    const leafGeom = new THREE.PlaneGeometry(0.055, 0.055);
-    const leafTypes = new Float32Array(MAX_LEAVES);
-    for (let i = 0; i < MAX_LEAVES; i++) {
-      leafTypes[i] = Math.floor(hash(i, 1001) * 4);
-    }
-    leafGeom.setAttribute('instanceLeafType', new THREE.InstancedBufferAttribute(leafTypes, 1));
-
-    const leafMat = new THREE.MeshBasicMaterial({
-      map: this.leafTexture,
-      transparent: true,
-      alphaTest: 0.1,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-
-    leafMat.onBeforeCompile = (shader) => {
-      shader.vertexShader = `
-        attribute float instanceLeafType;
-        varying vec2 vLeafUv;
-      ` + shader.vertexShader;
-      shader.vertexShader = shader.vertexShader.replace(
-        '#include <uv_vertex>',
-        `
-        #include <uv_vertex>
-        vec2 uvOff = vec2(mod(instanceLeafType, 2.0) * 0.5, floor(instanceLeafType / 2.0) * 0.5);
-        vLeafUv = uv * 0.5 + uvOff;
-        `
-      );
-      shader.fragmentShader = `
-        varying vec2 vLeafUv;
-      ` + shader.fragmentShader;
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <map_fragment>',
-        `
-        #ifdef USE_MAP
-          vec4 sampledDiffuseColor = texture2D( map, vLeafUv );
-          diffuseColor *= sampledDiffuseColor;
-        #endif
-        `
-      );
-    };
-
-    this.leafMesh = new THREE.InstancedMesh(leafGeom, leafMat, MAX_LEAVES);
-    this.leafMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.leafMesh.frustumCulled = false;
-    this.group.add(this.leafMesh);
-
-    // Initialize a deterministic pool. Positions are strictly assigned to canopy
-    // sources when autumn is active, so open fields never get unattached floating leaves.
-    for (let i = 0; i < MAX_LEAVES; i++) {
-      const ang = hash(i, 991) * Math.PI * 2;
-      const rad = 1.5 + hash(i, 992) * 6;
-      this.leafData.push({
-        x: Math.cos(ang) * rad,
-        y: 1.5 + hash(i, 993) * 10,
-        z: Math.sin(ang) * rad,
-        vx: 0, vy: 0, vz: 0,
-        rotX: hash(i, 994) * Math.PI * 2,
-        rotY: hash(i, 995) * Math.PI * 2,
-        rotZ: hash(i, 996) * Math.PI * 2,
-        rotSpeedX: (hash(i, 997) - 0.5) * 2.8,
-        rotSpeedY: (hash(i, 998) - 0.5) * 2.8,
-        rotSpeedZ: (hash(i, 999) - 0.5) * 2.8,
-        scale: 0.85 + hash(i, 1000) * 0.30,
-        type: Math.floor(hash(i, 1001) * 4),
-        phase: hash(i, 1002) * Math.PI * 2,
-        sourceKey: -1,
-        settled: false,
-        settledTime: 0,
-      });
-    }
 
 
     // ==========================================
@@ -430,119 +256,8 @@ export class Particles {
     }
 
     // ----------------------------------------------------
-    // 3. UPDATE AUTUMN LEAVES (tree-local flutter, settling and car wake)
+    // 3. AUTUMN LEAVES: ZERO IN RUNTIME (Rule #1)
     // ----------------------------------------------------
-    this.activeLeafSources.length = 0;
-    let canopyLoad = 0;
-    for (let sIdx = 0; sIdx < leafSources.length; sIdx++) {
-      const source = leafSources[sIdx];
-      if (source.load <= 0.35) continue;
-      const dx = source.x - center.x;
-      const dz = source.z - center.z;
-      if (dx * dx + dz * dz < 45 * 45) {
-        this.activeLeafSources.push(source);
-        canopyLoad += source.load;
-        if (this.activeLeafSources.length >= 8) break;
-      }
-    }
-
-    const nearbySources = this.activeLeafSources;
-    this.leafMesh.visible = !inTunnel && w.autumn > 0.08 && quality > 0 && leafDensity > 0.01 && nearbySources.length > 0;
-
-    if (this.leafMesh.visible) {
-      const coverage = clamp(canopyLoad / 4, 0.25, 1.0);
-      const activeLeaves = Math.min(MAX_LEAVES, Math.floor(MAX_LEAVES * quality * w.autumn * coverage * 0.70));
-
-
-      for (let i = 0; i < MAX_LEAVES; i++) {
-        if (i >= activeLeaves) {
-          this.leafData[i].sourceKey = -1;
-          this.leafDummy.position.set(0, -9999, 0);
-          this.leafDummy.updateMatrix();
-          this.leafMesh.setMatrixAt(i, this.leafDummy.matrix);
-          continue;
-        }
-
-        const source = nearbySources[i % nearbySources.length];
-        const sx = source.x - center.x;
-        const sy = source.y - center.y;
-        const sz = source.z - center.z;
-        const l = this.leafData[i];
-
-        const place = (ground: boolean) => {
-          const angle = hash(i + source.key, 1201) * Math.PI * 2;
-          const radius = source.radius * (0.10 + hash(i + source.key, 1202) * 0.55);
-          l.x = sx + Math.cos(angle) * radius;
-          l.z = sz + Math.sin(angle) * radius;
-          l.y = ground ? 0.05 : sy + (-0.20 + hash(i + source.key, 1203) * 0.45) * source.radius;
-          l.vx = l.vy = l.vz = 0;
-          l.sourceKey = source.key;
-          l.settled = ground;
-          l.settledTime = 0;
-        };
-
-        if (l.sourceKey !== source.key) {
-          place(false);
-        }
-
-        l.phase += dt * (1.5 + l.scale * 0.4);
-
-        if (l.settled) {
-          l.settledTime += dt;
-          if (l.settledTime > 5.5 + hash(i, 1204) * 5.0) {
-            place(false);
-          }
-        } else {
-          // Gentle organic flutter influenced by global wind
-          const flutterX = Math.sin(l.phase * 1.6) * 0.55 + windX * 0.75;
-          const flutterZ = Math.cos(l.phase * 1.3) * 0.45 + windZ * 0.75;
-          const fallRate = 0.95 * (0.85 + l.scale * 0.3);
-
-          // Subtle car wake aerodynamics
-          const distToCar = Math.hypot(l.x, l.z);
-          if (distToCar < 4.5 && Math.abs(carSpeed) > 3) {
-            const wakeFactor = (1.0 - distToCar / 4.5) * Math.min(Math.abs(carSpeed) * 0.20, 6.0);
-            const pushAngle = Math.atan2(l.x, l.z);
-            l.vx += Math.sin(pushAngle) * wakeFactor * 1.2;
-            l.vz += Math.cos(pushAngle) * wakeFactor - Math.sign(carSpeed) * wakeFactor * 0.3;
-            l.vy += wakeFactor * 0.5;
-            const jitter = hash(i, 1205) - 0.5;
-            l.rotSpeedX += jitter * wakeFactor * 1.8;
-            l.rotSpeedY -= jitter * wakeFactor * 1.2;
-          }
-
-          l.x += (flutterX + l.vx) * dt;
-          l.y += (-fallRate + l.vy) * dt;
-          l.z += (flutterZ + l.vz - carSpeed * 0.25) * dt;
-
-          l.vx *= 1.0 - 2.8 * dt;
-          l.vy *= 1.0 - 3.0 * dt;
-          l.vz *= 1.0 - 2.8 * dt;
-
-          if (l.y < 0.05) {
-            l.y = 0.05;
-            l.x = lerp(l.x, sx, 0.12);
-            l.z = lerp(l.z, sz, 0.12);
-            l.settled = true;
-            l.settledTime = 0;
-          } else if (Math.hypot(l.x - sx, l.z - sz) > source.radius * 1.6) {
-            place(false);
-          }
-        }
-
-        // Tumble and spin
-        l.rotX += (l.rotSpeedX + Math.sin(l.phase * 1.8) * 1.2) * dt;
-        l.rotY += (l.rotSpeedY + Math.cos(l.phase * 1.4) * 0.9) * dt;
-        l.rotZ += l.rotSpeedZ * dt;
-
-        this.leafDummy.position.set(l.x, l.y, l.z);
-        this.leafDummy.rotation.set(l.rotX, l.rotY, l.rotZ);
-        this.leafDummy.scale.set(l.scale, l.scale, l.scale);
-        this.leafDummy.updateMatrix();
-        this.leafMesh.setMatrixAt(i, this.leafDummy.matrix);
-      }
-      this.leafMesh.instanceMatrix.needsUpdate = true;
-    }
 
     // ----------------------------------------------------
     // 4. UPDATE WET ROAD TYRE SPRAY
@@ -610,12 +325,10 @@ export class Particles {
     (this.rainLines.material as THREE.Material).dispose();
     this.snowPoints.geometry.dispose();
     (this.snowPoints.material as THREE.Material).dispose();
-    this.leafMesh.geometry.dispose();
-    (this.leafMesh.material as THREE.Material).dispose();
-    this.leafTexture.dispose();
     this.sprayMesh.geometry.dispose();
     (this.sprayMesh.material as THREE.Material).dispose();
     this.sprayTexture.dispose();
     this.group.removeFromParent();
   }
 }
+

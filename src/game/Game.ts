@@ -82,6 +82,7 @@ export class Game {
   debugCockpitPos = new THREE.Vector3();
   debugCockpitQuat = new THREE.Quaternion();
   debug: { toggle: () => void; update: (fps?: number, dt?: number, cameraMode?: string, accumulatorAlpha?: number, navDebug?: { currentRoad?: string; nextRoad?: string; maneuverType?: string; distance?: number; routeProgress?: number; routeSegment?: string }) => void } | null = null;
+  perfOverlay: { update: (dt: number) => void; toggle: (force?: boolean) => void } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -220,6 +221,7 @@ export class Game {
     this.resize(); void this.loadVehicles();
     if (import.meta.env.DEV) {
       void import('../vehicle/VehicleDebug.ts').then(({ VehicleDebug }) => { this.debug = new VehicleDebug(this.vehicle, () => this.cameras.initialized = false, () => this.audio); });
+      void import('../dev/PerformanceOverlay.ts').then(({ PerformanceOverlay }) => { this.perfOverlay = new PerformanceOverlay(this.renderer, this.world); });
       if (typeof window !== 'undefined') (window as any).__AFTERMILE_GAME__ = this;
     }
     requestAnimationFrame(t => this.frame(t));
@@ -664,6 +666,6 @@ export class Game {
         console.warn('[COCKPIT] Single camera owner assertion failed: camera transform was modified after DriverEye!');
       }
     }
-    this.renderer.info.reset();this.composer.render();this.saveTimer+=dt;if(this.saveTimer>15){this.persist();this.saveTimer=0;}
+    this.renderer.info.reset();this.composer.render();this.perfOverlay?.update(dt);this.saveTimer+=dt;if(this.saveTimer>15){this.persist();this.saveTimer=0;}
   }
 }

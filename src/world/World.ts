@@ -47,40 +47,38 @@ export class World {
       const distance=Math.abs(chunk.start+CHUNK*.5-s);
       for(const object of chunk.group.children){
         const tier=object.userData.detailTier;
-        if(tier==='near')object.visible=distance<650;
-        if(tier==='mid')object.visible=distance<1250;
-        if(tier==='trees')object.visible=distance<2400;
-        if(object instanceof THREE.InstancedMesh&&tier==='trees')object.castShadow=distance<160;
+        if(tier==='near')object.visible=distance<140;
+        if(tier==='mid')object.visible=distance<220;
+        if(tier==='trees')object.visible=distance<1800;
+        if(object instanceof THREE.InstancedMesh&&tier==='trees')object.castShadow=distance<110;
       }
     }
+
     this.updateLeafSources();
   }
   rebuild(s:number) {for(const c of this.chunks.values())c.dispose();this.chunks.clear();this.update(s,true);}
   get objects() {let count=0;for(const c of this.chunks.values())count+=c.group.children.length;return count;}
 
-  private _cachedLeafSources:LeafSource[]=[];
-  private _leafSourcePool:LeafSource[]=[];
-
-  private updateLeafSources() {
-    this._cachedLeafSources.length=0;
-    let poolIdx=0;
-    for(const chunk of this.chunks.values()){
-      const zShift=this.origin-chunk.start;
-      for(let i=0;i<chunk.leafSources.length;i++){
-        const s=chunk.leafSources[i];
-        if(poolIdx>=this._leafSourcePool.length){
-          this._leafSourcePool.push({x:0,y:0,z:0,radius:0,load:0,key:0});
+  get statsCounts() {
+    let trees = 0;
+    let grass = 0;
+    for (const chunk of this.chunks.values()) {
+      for (const object of chunk.group.children) {
+        if (object instanceof THREE.InstancedMesh) {
+          const tier = object.userData.detailTier;
+          if (tier === 'trees') trees += object.count;
+          else if (tier === 'near' || tier === 'mid') grass += object.count;
         }
-        const item=this._leafSourcePool[poolIdx++];
-        item.x=s.x;
-        item.y=s.y;
-        item.z=s.z+zShift;
-        item.radius=s.radius;
-        item.load=s.load;
-        item.key=s.key;
-        this._cachedLeafSources.push(item);
       }
     }
+    return { trees, grass };
+  }
+
+  private _cachedLeafSources:LeafSource[]=[];
+
+  private updateLeafSources() {
+    // Disabled in runtime per Rule #1 (Zero leaves)
+    this._cachedLeafSources.length = 0;
   }
 
   /** Leaf emitters in the same origin-shifted frame as the hero and particles. */
@@ -88,4 +86,5 @@ export class World {
     return this._cachedLeafSources;
   }
 }
+
 

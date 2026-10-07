@@ -52,7 +52,7 @@ export class Batch {
       const mesh = new THREE.InstancedMesh(geo, mat, count);
       (mesh.instanceMatrix.array as Float32Array).set(data);
       mesh.instanceMatrix.needsUpdate = true;
-      const isFoliageOrCover = key.includes('grass') || key.includes('cover') || key.includes('undergrowth') || key.includes('fallen-leaf');
+      const isFoliageOrCover = key.includes('grass') || key.includes('cover') || key.includes('undergrowth');
       mesh.castShadow = !isFoliageOrCover;
       mesh.receiveShadow = true;
       mesh.userData.detailTier =

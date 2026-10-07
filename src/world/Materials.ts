@@ -28,7 +28,6 @@ export class Materials {
   cone = new THREE.ConeGeometry(1, 1, 9);
   sphere = new THREE.IcosahedronGeometry(1, 1);
   leafShape = new THREE.IcosahedronGeometry(1, 2);
-  leafGroundShape: THREE.BufferGeometry;
   grassShape: THREE.BufferGeometry;
 
   // Global Wind Uniform for shader-based vegetation animation
@@ -63,16 +62,6 @@ export class Materials {
       0, 0, -0.5,   0, 1, 0.08,   0, 0, 0.5
     ], 3));
     this.grassShape.computeVertexNormals();
-
-    // A small asymmetric leaf silhouette used for settled litter beneath
-    // canopies. Instanced with natural leaf proportions (~0.14m).
-    const leaf = new THREE.Shape();
-    leaf.moveTo(0, -0.07);
-    leaf.quadraticCurveTo(0.05, -0.035, 0.04, 0.02);
-    leaf.quadraticCurveTo(0.02, 0.06, 0, 0.07);
-    leaf.quadraticCurveTo(-0.02, 0.06, -0.04, 0.02);
-    leaf.quadraticCurveTo(-0.05, -0.035, 0, -0.07);
-    this.leafGroundShape = new THREE.ShapeGeometry(leaf);
 
     // Attach vertex shader swaying to foliage materials
     this.setupWindShader(this.leaf, 0.05);

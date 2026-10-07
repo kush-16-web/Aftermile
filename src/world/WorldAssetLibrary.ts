@@ -39,13 +39,11 @@ export class WorldAssetLibrary {
       this.load(loader, 'ash_mature', '/world/assets/tree_ash_mature.glb', 20.0),
       this.load(loader, 'roadside', '/world/assets/tree_roadside.glb', 15.0),
       this.load(loader, 'pine_tall', '/world/assets/tree_pine_tall.glb', 26.0),
-      // Photogrammetric undergrowth & ground cover
-      this.load(loader, 'shrub', '/world/assets/shrub_dense.glb', 2.4),
-      this.load(loader, 'weed', '/world/assets/plant_weed.glb', 1.2),
-      this.load(loader, 'grass_field', '/world/assets/grass_field_cluster.glb', 1.1),
-      this.load(loader, 'grass_near', '/world/assets/grass_tuft_near.glb', 0.65),
-      // Geological formations
-      this.load(loader, 'rock', '/world/assets/rock_boulder.glb', 2.8),
+      // Photogrammetric undergrowth & ground cover - isolated single centered variants
+      this.load(loader, 'shrub', '/world/assets/shrub_dense.glb', 2.4, 0),
+      this.load(loader, 'weed', '/world/assets/plant_weed.glb', 1.2, 2),
+      this.load(loader, 'grass_field', '/world/assets/grass_field_cluster.glb', 1.1, 1),
+      this.load(loader, 'grass_near', '/world/assets/grass_tuft_near.glb', 0.65, 10),
     ])
       .then(() => {
         this.loaded = this.parts.size > 0;
@@ -173,11 +171,12 @@ export class WorldAssetLibrary {
         ${
           foliage && isGrass
             ? `
-          vec3 autumnGrass = vec3(0.78, 0.62, 0.32);
-          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * autumnGrass * 1.6, terrainAutumn * 0.85);
+          vec3 autumnGrass = vec3(0.58, 0.52, 0.28);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * autumnGrass, terrainAutumn * 0.75);
         `
             : ''
         }
+
         ${
           foliage && isShrubOrWeed
             ? `
@@ -197,32 +196,70 @@ export class WorldAssetLibrary {
     material.customProgramCacheKey = () => `world-asset-season-${kind}-${foliage}-${isBark}`;
   }
 
-  private async load(loader: GLTFLoader, kind: WorldAssetKind, url: string, targetHeight: number) {
+  private async load(loader: GLTFLoader, kind: WorldAssetKind, url: string, targetHeight: number, variantIndex?: number) {
     try {
       const gltf = await loader.loadAsync(url);
       const root = gltf.scene;
       root.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(root);
-      const size = box.getSize(new THREE.Vector3());
-      if (!Number.isFinite(size.y) || size.y <= 0) return;
 
-      root.scale.setScalar(targetHeight / size.y);
-      root.updateMatrixWorld(true);
-      const scaledBox = new THREE.Box3().setFromObject(root);
-      const lift = new THREE.Matrix4().makeTranslation(0, -scaledBox.min.y, 0);
+      const isTree = kind === 'oak_mature' || kind === 'ash_mature' || kind === 'roadside' || kind === 'pine_tall';
       const parts: Part[] = [];
 
-      root.traverse((object) => {
-        if (!(object instanceof THREE.Mesh)) return;
-        const source = Array.isArray(object.material) ? object.material[0] : object.material;
+      if (isTree) {
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.getSize(new THREE.Vector3());
+        if (!Number.isFinite(size.y) || size.y <= 0) return;
+
+        const scale = targetHeight / size.y;
+        root.scale.setScalar(scale);
+        root.updateMatrixWorld(true);
+        const scaledBox = new THREE.Box3().setFromObject(root);
+        const center = scaledBox.getCenter(new THREE.Vector3());
+        const lift = new THREE.Matrix4().makeTranslation(-center.x, -scaledBox.min.y, -center.z);
+
+        root.traverse((object) => {
+          if (!(object instanceof THREE.Mesh)) return;
+          const source = Array.isArray(object.material) ? object.material[0] : object.material;
+          const material = source.clone() as THREE.MeshStandardMaterial;
+          this.surface(material, kind);
+          parts.push({
+            geometry: object.geometry,
+            material,
+            matrix: new THREE.Matrix4().multiplyMatrices(lift, object.matrixWorld),
+          });
+        });
+      } else {
+        const meshes: THREE.Mesh[] = [];
+        root.traverse((object) => {
+          if (object instanceof THREE.Mesh) meshes.push(object);
+        });
+        if (!meshes.length) return;
+        const chosen = meshes[variantIndex ?? 0] ?? meshes[0];
+        const geometry = chosen.geometry.clone();
+        geometry.applyMatrix4(chosen.matrixWorld);
+        geometry.computeBoundingBox();
+        const box = geometry.boundingBox;
+        if (!box) return;
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        if (!Number.isFinite(size.y) || size.y <= 0) return;
+
+        // Center X and Z to 0, set base Y to 0
+        geometry.translate(-center.x, -box.min.y, -center.z);
+        const scale = targetHeight / size.y;
+        geometry.scale(scale, scale, scale);
+        geometry.computeBoundingBox();
+        geometry.computeBoundingSphere();
+
+        const source = Array.isArray(chosen.material) ? chosen.material[0] : chosen.material;
         const material = source.clone() as THREE.MeshStandardMaterial;
         this.surface(material, kind);
         parts.push({
-          geometry: object.geometry,
+          geometry,
           material,
-          matrix: new THREE.Matrix4().multiplyMatrices(lift, object.matrixWorld),
+          matrix: new THREE.Matrix4().identity(),
         });
-      });
+      }
 
       if (parts.length) this.parts.set(kind, parts);
     } catch {}

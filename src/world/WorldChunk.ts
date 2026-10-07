@@ -282,18 +282,18 @@ export class WorldChunk {
       if (!assetAdded) {
         // Fallback procedural silhouette only when assets are still loading
         batch.add('trunk', m.cylinder, m.bark, pos.x, pos.y + tree.height * 0.4, pos.z, 0.35 * treeScale, tree.height * 0.8, 0.35 * treeScale);
-        batch.add('leaf', tree.pine ? m.cone : m.leafShape, tree.pine ? m.pine : m.leaf, pos.x, pos.y + tree.height * 0.7, pos.z, tree.canopyRadius, tree.height * 0.6, tree.canopyRadius, tree.rotation);
+        batch.add('canopy-fallback', tree.pine ? m.cone : m.leafShape, tree.pine ? m.pine : m.leaf, pos.x, pos.y + tree.height * 0.7, pos.z, tree.canopyRadius, tree.height * 0.6, tree.canopyRadius, tree.rotation);
       }
 
       // Vertical hierarchy: undergrowth shrubs and wild plants beneath tree canopies
       if (tree.hasUndergrowth && !road.isBridge(tree.s) && !road.isTunnel(tree.s)) {
-        const shrubCount = 2 + Math.floor(random() * 3);
+        const shrubCount = 1 + Math.floor(random() * 2);
         for (let sh = 0; sh < shrubCount; sh++) {
           const shAngle = random() * Math.PI * 2;
           const shDist = (0.25 + random() * 0.8) * tree.canopyRadius;
           const shS = tree.s + Math.cos(shAngle) * shDist;
           const shO = tree.offset + Math.sin(shAngle) * shDist;
-          if (Math.abs(shO) > 16 && shS >= this.start && shS < this.start + CHUNK) {
+          if (Math.abs(shO) > 18.5 && shS >= this.start && shS < this.start + CHUNK) {
             const shPos = groundPoint(shS, shO);
             if (shPos.y >= 8) {
               const isWeed = random() > 0.55;
@@ -308,42 +308,43 @@ export class WorldChunk {
     }
 
     // 9. LAYERED REAL GRASSLAND SYSTEM
-    // Grass extends seamlessly from the roadside verge into the open field.
-    // Independent streams for Left and Right sides prevent alternating or mirrored placement.
+    // Grass extends seamlessly along the roadside verge into the open field.
+    // Offset is strictly kept clear of the highway corridor (|o| >= 14.5m) to prevent spillage.
     const grassSides = [-1, 1];
     for (const side of grassSides) {
       const sideRng = rng(index * 211 + (side === 1 ? 503 : 919));
 
-      // Near field (11.5-40m): detailed grass tufts and roadside weeds
-      const nearCount = Math.floor(58 * vegetation);
+      // Near verge (14.5-38m): crisp grass tufts and wildflower weeds safely beyond the shoulder
+      const nearCount = Math.floor(24 * vegetation);
       for (let i = 0; i < nearCount; i++) {
         const s = this.start + sideRng() * CHUNK;
-        const offset = side * (11.5 + Math.pow(sideRng(), 1.3) * 28.5);
+        const offset = side * (14.5 + Math.pow(sideRng(), 1.3) * 23.5);
         const w = road.weights(s);
         if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
         const pos = groundPoint(s, offset);
         if (pos.y < 8) continue;
         const isWeed = sideRng() > 0.85;
         const kind = isWeed ? 'weed' : 'grass_near';
-        const scale = isWeed ? 0.75 + sideRng() * 0.45 : 0.85 + sideRng() * 0.55;
+        const scale = isWeed ? 0.70 + sideRng() * 0.35 : 0.75 + sideRng() * 0.40;
         if (this.assets?.add(batch, kind, 'grass-near', pos.x, pos.y, pos.z, scale, sideRng() * Math.PI * 2)) continue;
         batch.add('ground-cover', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, sideRng() * Math.PI * 2);
       }
 
-      // Mid field (26-140m): dense photogrammetric grass clusters blanketing the open meadow
-      const fieldCount = Math.floor(52 * vegetation);
+      // Mid meadow (32-110m): balanced photogrammetric grass clusters blanketing open country
+      const fieldCount = Math.floor(14 * vegetation);
       for (let i = 0; i < fieldCount; i++) {
         const s = this.start + sideRng() * CHUNK;
-        const offset = side * (26 + Math.pow(sideRng(), 1.4) * 115);
+        const offset = side * (32 + Math.pow(sideRng(), 1.4) * 78);
         const w = road.weights(s);
         if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
         const pos = groundPoint(s, offset);
         if (pos.y < 8) continue;
-        const scale = 0.95 + sideRng() * 0.75;
+        const scale = 0.85 + sideRng() * 0.45;
         if (this.assets?.add(batch, 'grass_field', 'grass-field', pos.x, pos.y, pos.z, scale, sideRng() * Math.PI * 2)) continue;
         batch.add('mid-grass', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, sideRng() * Math.PI * 2);
       }
     }
+
 
     // 10. Coastal Boulders & Rock Formations
     const rockCount = vista > 0.4 ? 0 : isCoast ? 6 : isMountain ? 3 : 0;
