@@ -2,13 +2,15 @@ import * as THREE from 'three';
 
 /** World-space multi-tier procedural grassland surface shader.
  * Delivers rich, organic meadow breakup, stratified soil/rock tones,
- * vibrant autumn grassland color transitions, and soft atmospheric horizon integration. */
+ * vibrant autumn grassland color transitions, and soft atmospheric horizon integration.
+ * Now includes field region variation and terrain depth layering. */
 export class TerrainMaterial extends THREE.MeshStandardMaterial {
   uniforms = {
     terrainOrigin: { value: 0 },
     terrainAutumn: { value: 0 },
     terrainSnow: { value: 0 },
-    terrainWet: { value: 0 }
+    terrainWet: { value: 0 },
+    uFieldWeights: { value: new THREE.Vector4(0.25, 0.25, 0.25, 0.25) }
   };
 
   constructor() {
@@ -37,6 +39,10 @@ export class TerrainMaterial extends THREE.MeshStandardMaterial {
         float terrainFbm(vec2 p){
           return terrainNoise(p) * 0.55 + terrainNoise(p * 2.2) * 0.30 + terrainNoise(p * 5.1) * 0.15;
         }
+        // Field region weights - passed from CPU for current camera region
+        // These would ideally be computed in shader but we pass as uniforms for now
+        uniform vec4 uFieldWeights; // fresh, dry, wild, pasture
+        uniform float uAutumn;
       ` + shader.fragmentShader;
 
       shader.fragmentShader = shader.fragmentShader.replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
@@ -73,21 +79,22 @@ export class TerrainMaterial extends THREE.MeshStandardMaterial {
         float turfClumps = terrainNoise(pos * 0.22);
         float fineClumpTexture = terrainNoise(pos * 0.75);
 
-        // 4 Harmonic Meadow Field Biomes matching 3D grass cards precisely:
-        // 1. Lush Green Pasture (fertile lowlands)
-        vec3 greenMeadow = vec3(0.18, 0.28, 0.10);
-        // 2. Open Sunlit Meadow (warm golden-olive)
-        vec3 sunlitPasture = vec3(0.24, 0.32, 0.11);
-        // 3. Mixed Field Grasses (sage-olive)
-        vec3 wildMeadow = vec3(0.20, 0.28, 0.11);
-        // 4. Sun-cured Golden Straw (wind-swept ridges)
-        vec3 dryMeadow = vec3(0.26, 0.30, 0.13);
+        // FIELD REGION BIOMES (blended via uFieldWeights)
+        // 1. Fresh Meadow (fertile lowlands) - richer green
+        vec3 freshMeadow = vec3(0.18, 0.28, 0.10);
+        // 2. Dry Meadow (sun-cured) - olive/golden
+        vec3 dryMeadow = vec3(0.24, 0.30, 0.11);
+        // 3. Wild Meadow (mixed grasses) - sage-olive
+        vec3 wildMeadow = vec3(0.20, 0.26, 0.11);
+        // 4. Open Pasture (grazed) - shorter, warmer
+        vec3 pastureMeadow = vec3(0.22, 0.30, 0.12);
         // Rich damp turf undertone
         vec3 loamFloor = vec3(0.14, 0.20, 0.08);
 
-        vec3 fieldColor = mix(greenMeadow, sunlitPasture, meadowDrift);
-        fieldColor = mix(fieldColor, wildMeadow, smoothstep(0.35, 0.65, macroFields));
-        fieldColor = mix(fieldColor, dryMeadow, smoothstep(0.65, 0.95, macroFields) * 0.65);
+        // Blend field regions
+        vec3 fieldColor = mix(freshMeadow, dryMeadow, uFieldWeights.y);
+        fieldColor = mix(fieldColor, wildMeadow, uFieldWeights.z);
+        fieldColor = mix(fieldColor, pastureMeadow, uFieldWeights.w);
         fieldColor = mix(fieldColor, loamFloor, (1.0 - turfClumps) * 0.25);
 
         // Multi-scale natural meadow structure:
@@ -106,14 +113,16 @@ export class TerrainMaterial extends THREE.MeshStandardMaterial {
 
         // Autumn mode: authentic countryside grassland (muted green, olive, golden green, straw)
         // Strictly green-dominant (G > R) to avoid orange/peach ground while preserving autumn separation
-        vec3 autumnOlive = vec3(0.20, 0.30, 0.11);
-        vec3 autumnGold = vec3(0.24, 0.32, 0.12);
-        vec3 autumnStraw = vec3(0.27, 0.30, 0.13);
-        vec3 autumnDeep = vec3(0.16, 0.26, 0.10);
-        vec3 autumnFloor = vec3(0.14, 0.21, 0.08);
+        vec3 autumnFresh = vec3(0.18, 0.28, 0.10);   // Fresh autumn - muted green
+        vec3 autumnDry = vec3(0.25, 0.30, 0.12);    // Dry autumn - olive/gold
+        vec3 autumnWild = vec3(0.21, 0.27, 0.11);   // Wild autumn - sage
+        vec3 autumnPasture = vec3(0.23, 0.29, 0.12); // Pasture autumn - straw-green
+        vec3 autumnDeep = vec3(0.16, 0.26, 0.10);   // Deep turf
+        vec3 autumnFloor = vec3(0.14, 0.21, 0.08);  // Floor
 
-        vec3 autumnTone = mix(autumnOlive, autumnGold, meadowDrift);
-        autumnTone = mix(autumnTone, autumnStraw, smoothstep(0.4, 0.8, macroFields) * 0.65);
+        vec3 autumnTone = mix(autumnFresh, autumnDry, uFieldWeights.y);
+        autumnTone = mix(autumnTone, autumnWild, uFieldWeights.z);
+        autumnTone = mix(autumnTone, autumnPasture, uFieldWeights.w);
         autumnTone = mix(autumnTone, autumnDeep, (1.0 - turfClumps) * 0.25);
         autumnTone = mix(autumnTone, autumnFloor, (1.0 - fineClumpTexture) * 0.18);
 
@@ -128,14 +137,37 @@ export class TerrainMaterial extends THREE.MeshStandardMaterial {
         // Winter snow accumulation
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82, 0.86, 0.88), terrainSnow * 0.92);
 
-        // Atmospheric perspective: softly soften contrast and saturate distant horizon hills
-        float haze = smoothstep(450.0, 2600.0, vCamDist);
-        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.94 + vec3(0.04, 0.06, 0.08), haze * 0.32);
+        // TERRAIN DEPTH LAYERING: foreground/midground/distant separation
+        // Without atmospheric fog (next pass), use subtle color/value shifts
+        float depthNear = smoothstep(0.0, 400.0, vCamDist);
+        float depthMid = smoothstep(400.0, 2000.0, vCamDist);
+        float depthFar = smoothstep(2000.0, 8000.0, vCamDist);
+
+        // Foreground (0-400m): full color fidelity, slightly warmer
+        vec3 fgTint = vec3(1.02, 1.0, 0.98);
+        // Midground (400m-2km): slight desaturation, cooler
+        vec3 mgTint = vec3(0.98, 0.99, 1.01);
+        // Distant (2km-8km): more desaturated, bluer, lighter (atmospheric perspective preview)
+        vec3 bgTint = vec3(0.94, 0.96, 1.04);
+        // Very distant (8km+): strong atmospheric preview
+        vec3 vdTint = vec3(0.90, 0.93, 1.06);
+
+        vec3 depthTint = mix(fgTint, mgTint, depthMid);
+        depthTint = mix(depthTint, bgTint, depthFar);
+        depthTint = mix(depthTint, vdTint, smoothstep(8000.0, 16000.0, vCamDist));
+
+        // Apply depth tint only to grassland areas
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * depthTint, isGrassland * 0.5);
+
+        // Additional distant value compression (distant terrain lighter)
+        float valueCompress = smoothstep(1500.0, 6000.0, vCamDist) * 0.15;
+        float luminance = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(luminance * 1.2), isGrassland * valueCompress);
       `);
     };
   }
 
   customProgramCacheKey() {
-    return 'aftermile-terrain-v8';
+    return 'aftermile-terrain-v9';
   }
 }

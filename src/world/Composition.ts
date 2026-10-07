@@ -1,6 +1,7 @@
 import { hash, lerp, smooth } from '../core/math.ts';
 import { HEIGHT_SECTION } from '../road/RouteProfile.ts';
 import type { Road } from '../road/Road.ts';
+import { fieldRegion, fieldRegionWeights } from '../road/Landscape.ts';
 
 export type TreeKind = 'oak_mature' | 'ash_mature' | 'roadside' | 'pine_tall';
 
@@ -14,6 +15,53 @@ export function meadowWeight(road: Road, s: number) {
   const section = Math.floor(s / 1600),
     t = s / 1600 - section;
   return Math.max(vistaWeight(road, s), lerp(hash(section, road.seed + 410), hash(section + 1, road.seed + 410), smooth(t)));
+}
+
+/** Get field region character at a position for grass/terrain variation */
+export function getFieldRegion(road: Road, s: number, offset: number): { region: number; weights: { fresh: number; dry: number; wild: number; pasture: number } } {
+  const weights = fieldRegionWeights(road, s, offset);
+  const region = fieldRegion(road, s, offset);
+  return { region, weights };
+}
+
+/** Field region parameters for grass rendering */
+export function getFieldRegionParams(road: Road, s: number, offset: number): {
+  colorTint: { r: number; g: number; b: number };
+  heightScale: number;
+  densityScale: number;
+} {
+  const { weights } = getFieldRegion(road, s, offset);
+  
+  // Fresh Meadow: richer green, dense, moderate height
+  const freshColor = { r: 0.18, g: 0.28, b: 0.10 };
+  const freshHeight = 1.05;
+  const freshDensity = 1.0;
+  
+  // Dry Meadow: olive/straw, thinner, shorter
+  const dryColor = { r: 0.24, g: 0.28, b: 0.11 };
+  const dryHeight = 0.85;
+  const dryDensity = 0.75;
+  
+  // Wild Meadow: mixed heights, irregular density, weeds
+  const wildColor = { r: 0.20, g: 0.26, b: 0.11 };
+  const wildHeight = 1.15;
+  const wildDensity = 0.9;
+  
+  // Open Pasture: shorter, lower density, smoother
+  const pastureColor = { r: 0.22, g: 0.30, b: 0.12 };
+  const pastureHeight = 0.75;
+  const pastureDensity = 0.65;
+  
+  const colorTint = {
+    r: weights.fresh * freshColor.r + weights.dry * dryColor.r + weights.wild * wildColor.r + weights.pasture * pastureColor.r,
+    g: weights.fresh * freshColor.g + weights.dry * dryColor.g + weights.wild * wildColor.g + weights.pasture * pastureColor.g,
+    b: weights.fresh * freshColor.b + weights.dry * dryColor.b + weights.wild * wildColor.b + weights.pasture * pastureColor.b,
+  };
+  
+  const heightScale = weights.fresh * freshHeight + weights.dry * dryHeight + weights.wild * wildHeight + weights.pasture * pastureHeight;
+  const densityScale = weights.fresh * freshDensity + weights.dry * dryDensity + weights.wild * wildDensity + weights.pasture * pastureDensity;
+  
+  return { colorTint, heightScale, densityScale };
 }
 
 export interface TreePlacement {
@@ -32,37 +80,14 @@ export interface TreePlacement {
 /** Composes an asymmetric, rhythmic driving landscape.
  * Left and right sides are generated through independent random streams with
  * macro-scale composition zones to eliminate mirroring and repetitive placement.
- * Generates isolated mature trees, small loose groups (3–6), medium groves (7–15),
- * large loose groves (15–25), roadside woodland canopies, and distant tree lines,
- * interspersed with intentional open meadow negative space. */
+ * Generates isolated landmark trees, loose 3-6 tree groups, 7-15 tree clusters,
+ * 15-30 tree groves, distant tree lines, and short tree-rich/forest-edge sections,
+ * interspersed with intentional open meadow negative space.
+ * Fully deterministic: same results whether queried per-chunk or full-range. */
 export function treePlacements(road: Road, start: number, end: number): TreePlacement[] {
   const out: TreePlacement[] = [];
 
-  // 1. OPENING EXPERIENCE (s < 1550m):
-  // Preserve vast open grassland at spawn (0..950m).
-  // At s ≈ 1150-1300m, place exactly ONE isolated majestic hero tree in the open field.
-  const heroSpawnS = 1220;
-  if (heroSpawnS >= start && heroSpawnS < end) {
-    const heroKey = road.seed + 777;
-    const heroSide = hash(heroKey, 11) > 0.5 ? 1 : -1;
-    const heroOffset = heroSide * (65 + hash(heroKey, 12) * 35);
-    if (road.terrainSurface(heroSpawnS, heroOffset) >= 8.5) {
-      out.push({
-        s: heroSpawnS,
-        offset: heroOffset,
-        height: 23.5,
-        kind: 'oak_mature',
-        pine: false,
-        rotation: hash(heroKey, 13) * Math.PI * 2,
-        canopyRadius: 11.5,
-        leafLoad: 0.95,
-        clusterId: 10001,
-        hasUndergrowth: true,
-      });
-    }
-  }
-
-  // 2. DUAL-STREAM INDEPENDENT PLACEMENT GENERATORS
+  // DUAL-STREAM INDEPENDENT PLACEMENT GENERATORS
   // Left side (side = -1) and Right side (side = 1) have distinct spatial steps,
   // distinct prime seeds, and uncorrelated composition rhythms.
   const sides = [
@@ -84,6 +109,9 @@ export function treePlacements(road: Road, start: number, end: number): TreePlac
       // Crest panorama (5750..6250m) stays completely clear for sweeping vista
       if (Math.abs(centre - 6000) < 480) continue;
 
+      // Valley floor basin (13000..17000m) - keep mostly open for basin view
+      if (centre > 13000 && centre < 17000 && Math.abs(side * 1400) < 2000) continue;
+
       const isHighVista = vistaWeight(road, centre) > 0.38;
       const w = road.weights(centre);
       const isCoast = w.coast > 0.18;
@@ -97,36 +125,61 @@ export function treePlacements(road: Road, start: number, end: number): TreePlac
       // Chapter roll within zone
       const chapterRoll = hash(key, 102);
 
-      type ClusterStyle = 'open_negative' | 'isolated' | 'small_group' | 'medium_grove' | 'large_grove' | 'roadside_edge' | 'distant_line';
+      // Determine if this zone is a special geography zone
+      const inValleyApproach = centre > 4000 && centre < 7000; // Approach to crest
+      const atCrest = Math.abs(centre - 6000) < 800; // Crest area
+      const inValleyRim = centre > 10000 && centre < 20000 && Math.abs(side * 1400) < 3000; // Valley rim
+      const inValleyFloor = centre > 13000 && centre < 17000; // Valley floor
+      const inMountainZone = centre > 40000; // Distant mountains
+
+      type ClusterStyle = 'open_negative' | 'isolated_landmark' | 'loose_group' | 'cluster' | 'grove' | 'roadside_edge' | 'distant_line' | 'forest_edge' | 'valley_rim' | 'crest_landmark';
       let clusterStyle: ClusterStyle;
 
-      if (isHighVista) {
+      // Special geography zones with deterministic composition
+      if (atCrest && Math.abs(centre - 6000) < 300 && hash(key, 999) < 0.15) {
+        // Crest landmark trees - deterministic based on zone/key
+        clusterStyle = 'crest_landmark';
+      } else if (inValleyRim && hash(key, 998) < 0.25) {
+        // Valley rim tree lines
+        clusterStyle = 'valley_rim';
+      } else if (inValleyFloor && hash(key, 997) < 0.1) {
+        // Very sparse valley floor edge clusters
+        clusterStyle = 'loose_group';
+      } else if (isHighVista) {
         // In high vista areas, only place distant tree lines to frame the sweeping horizon
         clusterStyle = chapterRoll < 0.45 ? 'distant_line' : 'open_negative';
+      } else if (inMountainZone) {
+        // Mountain zones: more pines, forest edges, tree lines
+        if (chapterRoll < 0.2) clusterStyle = 'open_negative';
+        else if (chapterRoll < 0.45) clusterStyle = 'cluster';
+        else if (chapterRoll < 0.7) clusterStyle = 'grove';
+        else if (chapterRoll < 0.85) clusterStyle = 'forest_edge';
+        else clusterStyle = 'distant_line';
       } else if (zoneRoll < 0.22) {
         // Zone A: Pure Open Meadow / Countryside (Large negative space)
-        if (chapterRoll < 0.20) clusterStyle = 'isolated';
-        else if (chapterRoll < 0.35) clusterStyle = 'distant_line';
+        if (chapterRoll < 0.15) clusterStyle = 'isolated_landmark';
+        else if (chapterRoll < 0.3) clusterStyle = 'distant_line';
         else clusterStyle = 'open_negative';
       } else if (zoneRoll < 0.52) {
         // Zone B: Scattered Meadow & Loose Groves
-        if (chapterRoll < 0.22) clusterStyle = 'open_negative';
-        else if (chapterRoll < 0.50) clusterStyle = 'isolated';
-        else if (chapterRoll < 0.85) clusterStyle = 'small_group';
+        if (chapterRoll < 0.2) clusterStyle = 'open_negative';
+        else if (chapterRoll < 0.45) clusterStyle = 'isolated_landmark';
+        else if (chapterRoll < 0.8) clusterStyle = 'loose_group';
         else clusterStyle = 'roadside_edge';
       } else if (zoneRoll < 0.80) {
         // Zone C: Medium Woodland Country
         if (chapterRoll < 0.15) clusterStyle = 'open_negative';
-        else if (chapterRoll < 0.40) clusterStyle = 'small_group';
-        else if (chapterRoll < 0.72) clusterStyle = 'medium_grove';
-        else if (chapterRoll < 0.88) clusterStyle = 'roadside_edge';
+        else if (chapterRoll < 0.35) clusterStyle = 'loose_group';
+        else if (chapterRoll < 0.65) clusterStyle = 'cluster';
+        else if (chapterRoll < 0.8) clusterStyle = 'roadside_edge';
         else clusterStyle = 'distant_line';
       } else {
         // Zone D: Tree-Rich Section (Occasional large loose groves and staggered clusters)
-        if (chapterRoll < 0.12) clusterStyle = 'open_negative';
-        else if (chapterRoll < 0.35) clusterStyle = 'small_group';
-        else if (chapterRoll < 0.65) clusterStyle = 'medium_grove';
-        else if (chapterRoll < 0.85) clusterStyle = 'large_grove';
+        if (chapterRoll < 0.1) clusterStyle = 'open_negative';
+        else if (chapterRoll < 0.3) clusterStyle = 'loose_group';
+        else if (chapterRoll < 0.6) clusterStyle = 'cluster';
+        else if (chapterRoll < 0.8) clusterStyle = 'grove';
+        else if (chapterRoll < 0.9) clusterStyle = 'forest_edge';
         else clusterStyle = 'roadside_edge';
       }
 
@@ -139,44 +192,67 @@ export function treePlacements(road: Road, start: number, end: number): TreePlac
       let minSeparation = 11.0;
 
       switch (clusterStyle) {
-        case 'isolated':
+        case 'crest_landmark':
+          // Exactly 1-2 landmark trees at the crest, framing the view
+          count = 1 + Math.floor(hash(key, 104) * 2); // 1-2 trees
+          baseOffset = side * (75 + hash(key, 103) * 50);
+          spreadS = 40;
+          spreadO = 25;
+          minSeparation = 15.0;
+          break;
+        case 'valley_rim':
+          // Tree line along valley rim
+          count = 4 + Math.floor(hash(key, 104) * 8); // 4-11 trees
+          baseOffset = side * (1300 + hash(key, 103) * 200);
+          spreadS = 200 + count * 20;
+          spreadO = 60;
+          minSeparation = 16.0;
+          break;
+        case 'isolated_landmark':
           count = 1;
-          baseOffset = side * (38 + hash(key, 103) * 65);
+          baseOffset = side * (45 + hash(key, 103) * 80);
           break;
-        case 'small_group':
+        case 'loose_group':
           count = 3 + Math.floor(hash(key, 104) * 4); // 3 to 6 trees
-          baseOffset = side * (44 + hash(key, 103) * 60);
-          spreadS = 55 + count * 9;
-          spreadO = 30 + count * 6;
-          minSeparation = 11.5;
+          baseOffset = side * (50 + hash(key, 103) * 70);
+          spreadS = 60 + count * 10;
+          spreadO = 35 + count * 7;
+          minSeparation = 12.0;
           break;
-        case 'medium_grove':
+        case 'cluster':
           count = 7 + Math.floor(hash(key, 104) * 8); // 7 to 14 trees
-          baseOffset = side * (55 + hash(key, 103) * 75);
-          spreadS = 85 + count * 10;
-          spreadO = 42 + count * 7;
-          minSeparation = 12.5;
+          baseOffset = side * (65 + hash(key, 103) * 85);
+          spreadS = 95 + count * 12;
+          spreadO = 50 + count * 8;
+          minSeparation = 13.0;
           break;
-        case 'large_grove':
-          count = 15 + Math.floor(hash(key, 104) * 11); // 15 to 25 trees
-          baseOffset = side * (75 + hash(key, 103) * 85);
-          spreadS = 135 + count * 10;
-          spreadO = 60 + count * 7;
-          minSeparation = 13.5;
+        case 'grove':
+          count = 15 + Math.floor(hash(key, 104) * 15); // 15 to 29 trees
+          baseOffset = side * (90 + hash(key, 103) * 100);
+          spreadS = 160 + count * 12;
+          spreadO = 75 + count * 8;
+          minSeparation = 14.0;
           break;
         case 'roadside_edge':
           count = 2 + Math.floor(hash(key, 104) * 3); // 2 to 4 trees
-          baseOffset = side * (22 + hash(key, 103) * 12);
-          spreadS = 40 + count * 8;
-          spreadO = 10;
-          minSeparation = 12.0;
+          baseOffset = side * (24 + hash(key, 103) * 14);
+          spreadS = 45 + count * 9;
+          spreadO = 12;
+          minSeparation = 12.5;
           break;
         case 'distant_line':
-          count = 4 + Math.floor(hash(key, 104) * 6); // 4 to 9 trees
-          baseOffset = side * (180 + hash(key, 103) * 130);
-          spreadS = 130 + count * 15;
-          spreadO = 35;
-          minSeparation = 14.0;
+          count = 5 + Math.floor(hash(key, 104) * 8); // 5 to 12 trees
+          baseOffset = side * (200 + hash(key, 103) * 150);
+          spreadS = 150 + count * 18;
+          spreadO = 40;
+          minSeparation = 15.0;
+          break;
+        case 'forest_edge':
+          count = 10 + Math.floor(hash(key, 104) * 10); // 10 to 19 trees
+          baseOffset = side * (120 + hash(key, 103) * 60);
+          spreadS = 120 + count * 10;
+          spreadO = 55 + count * 6;
+          minSeparation = 12.0;
           break;
       }
 
@@ -191,7 +267,7 @@ export function treePlacements(road: Road, start: number, end: number): TreePlac
           // Poisson-like distribution with guaranteed minimum spacing between trunks
           let attempts = 0;
           let valid = false;
-          while (attempts < 8 && !valid) {
+          while (attempts < 10 && !valid) {
             const tryS = centre + (hash(q + attempts * 17, 105) - 0.5) * spreadS;
             const tryO = baseOffset + (hash(q + attempts * 17, 106) - 0.5) * spreadO;
             valid = true;
@@ -201,7 +277,7 @@ export function treePlacements(road: Road, start: number, end: number): TreePlac
                 break;
               }
             }
-            if (valid || attempts === 7) {
+            if (valid || attempts === 9) {
               s = tryS;
               o = tryO;
               break;
@@ -229,28 +305,41 @@ export function treePlacements(road: Road, start: number, end: number): TreePlac
         let canopyRadius: number;
         let leafLoad: number;
 
-        if (w.country > 0.4 && speciesRoll > 0.72) {
-          // Tall Pine in mountain/countryside terrain (Evergreen)
+        // Valley rim areas: more pines
+        const isValleyRim = clusterStyle === 'valley_rim';
+        // Mountain zones: more pines
+        const isMountainZone = centre > 40000;
+        // Crest landmarks: always oak
+        const isCrestLandmark = clusterStyle === 'crest_landmark';
+
+        if (isCrestLandmark) {
+          // Majestic Mature Oak at crest
+          kind = 'oak_mature';
+          height = 24.0 + hash(q, 108) * 5;
+          canopyRadius = 11.0 + hash(q, 109) * 3;
+          leafLoad = 0.98;
+        } else if ((w.country > 0.4 || isValleyRim || isMountainZone) && speciesRoll > 0.65) {
+          // Tall Pine in mountain/countryside/valley rim terrain (Evergreen)
           kind = 'pine_tall';
-          height = 23.0 + hash(q, 108) * 6.5;
-          canopyRadius = 5.2 + hash(q, 109) * 2.2;
+          height = 23.0 + hash(q, 108) * 8;
+          canopyRadius = 5.2 + hash(q, 109) * 2.5;
           leafLoad = 0.08;
         } else if (clusterStyle === 'roadside_edge' && t === 0) {
           kind = 'roadside';
           height = 14.5 + hash(q, 108) * 3.5;
           canopyRadius = 6.8 + hash(q, 109) * 2.2;
           leafLoad = 0.85;
-        } else if (speciesRoll > 0.48) {
+        } else if (speciesRoll > 0.45) {
           // Majestic Mature Oak (Deciduous Autumn)
           kind = 'oak_mature';
-          height = 20.0 + hash(q, 108) * 5.5;
-          canopyRadius = 9.2 + hash(q, 109) * 3.5;
+          height = 20.0 + hash(q, 108) * 6.5;
+          canopyRadius = 9.2 + hash(q, 109) * 4.0;
           leafLoad = 0.95;
         } else {
           // Elegant Mature Ash (Deciduous Autumn)
           kind = 'ash_mature';
-          height = 18.5 + hash(q, 108) * 4.5;
-          canopyRadius = 7.8 + hash(q, 109) * 2.8;
+          height = 18.5 + hash(q, 108) * 5.0;
+          canopyRadius = 7.8 + hash(q, 109) * 3.2;
           leafLoad = 0.88;
         }
 
@@ -266,7 +355,7 @@ export function treePlacements(road: Road, start: number, end: number): TreePlac
             canopyRadius,
             leafLoad,
             clusterId: id,
-            hasUndergrowth: (clusterStyle === 'medium_grove' || clusterStyle === 'large_grove' || clusterStyle === 'small_group') && (t === 0 || t === 1),
+            hasUndergrowth: (clusterStyle === 'cluster' || clusterStyle === 'grove' || clusterStyle === 'forest_edge' || clusterStyle === 'loose_group' || clusterStyle === 'valley_rim') && (t === 0 || t === 1),
           });
         }
       }

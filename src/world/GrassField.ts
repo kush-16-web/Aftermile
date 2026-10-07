@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Road } from '../road/Road.ts';
 import { Materials } from './Materials.ts';
+import { getFieldRegionParams } from './Composition.ts';
 
 /**
  * Procedural 3-blade micro-tuft geometry.
@@ -108,6 +109,7 @@ function createBladeTuftGeometry(): THREE.BufferGeometry {
  * GPU Grass Material.
  * Pure procedural standard material with coherent vertex shader wind,
  * smooth distance height shrink fade, and PBR colors matching TerrainMaterial.
+ * Now supports field region variation for color, height, and density.
  */
 export class GrassMaterial extends THREE.MeshStandardMaterial {
   uniforms = {
@@ -115,6 +117,10 @@ export class GrassMaterial extends THREE.MeshStandardMaterial {
     uWind: { value: 0.5 },
     uAutumn: { value: 0 },
     terrainOrigin: { value: 0 },
+    // Field region variation uniforms
+    uFieldColorTint: { value: new THREE.Vector3(1, 1, 1) },
+    uFieldHeightScale: { value: 1.0 },
+    uFieldDensityScale: { value: 1.0 },
   };
 
   constructor() {
@@ -128,10 +134,13 @@ export class GrassMaterial extends THREE.MeshStandardMaterial {
       Object.assign(shader.uniforms, this.uniforms);
 
       shader.vertexShader = `
-        uniform float uTime, uWind, terrainOrigin;
+        uniform float uTime, uWind, terrainOrigin, uFieldHeightScale, uFieldDensityScale;
+        uniform vec3 uFieldColorTint;
         varying vec3 vWorldGrass;
         varying vec2 vGrassUv;
         varying float vGrassDist;
+        varying vec3 vFieldColorTint;
+        varying float vFieldHeightScale;
       ` + shader.vertexShader;
 
       shader.vertexShader = shader.vertexShader.replace(
@@ -139,6 +148,8 @@ export class GrassMaterial extends THREE.MeshStandardMaterial {
         `
         #include <begin_vertex>
         vGrassUv = uv;
+        vFieldColorTint = uFieldColorTint;
+        vFieldHeightScale = uFieldHeightScale;
         vec4 instP = vec4(transformed, 1.0);
         #ifdef USE_INSTANCING
           instP = instanceMatrix * instP;
@@ -163,7 +174,7 @@ export class GrassMaterial extends THREE.MeshStandardMaterial {
 
         // Distance height shrink fade (48m to 72m)
         float distFade = 1.0 - smoothstep(48.0, 72.0, vGrassDist);
-        transformed.y *= distFade;
+        transformed.y *= distFade * uFieldHeightScale;
         `
       );
 
@@ -172,6 +183,8 @@ export class GrassMaterial extends THREE.MeshStandardMaterial {
         varying vec3 vWorldGrass;
         varying vec2 vGrassUv;
         varying float vGrassDist;
+        varying vec3 vFieldColorTint;
+        varying float vFieldHeightScale;
       ` + shader.fragmentShader;
 
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -179,12 +192,13 @@ export class GrassMaterial extends THREE.MeshStandardMaterial {
         `
         #include <color_fragment>
         // Vertical blade gradient matching TerrainMaterial Autumn tones
-        vec3 greenRoot = vec3(0.14, 0.22, 0.08);
-        vec3 greenTip  = vec3(0.24, 0.34, 0.11);
+        // Base colors modulated by field region tint
+        vec3 greenRoot = vec3(0.14, 0.22, 0.08) * vFieldColorTint;
+        vec3 greenTip  = vec3(0.24, 0.34, 0.11) * vFieldColorTint;
 
-        vec3 autumnRoot = vec3(0.15, 0.22, 0.08);
-        vec3 autumnTip  = vec3(0.24, 0.32, 0.12);
-        vec3 autumnStraw = vec3(0.28, 0.31, 0.13);
+        vec3 autumnRoot = vec3(0.15, 0.22, 0.08) * vFieldColorTint;
+        vec3 autumnTip  = vec3(0.24, 0.32, 0.12) * vFieldColorTint;
+        vec3 autumnStraw = vec3(0.28, 0.31, 0.13) * vFieldColorTint;
 
         vec3 root = mix(greenRoot, autumnRoot, uAutumn);
         vec3 tip  = mix(greenTip, mix(autumnTip, autumnStraw, 0.45), uAutumn);
@@ -203,7 +217,7 @@ export class GrassMaterial extends THREE.MeshStandardMaterial {
   }
 
   customProgramCacheKey() {
-    return 'aftermile-grass-field-v5';
+    return 'aftermile-grass-field-v6';
   }
 }
 
@@ -233,6 +247,7 @@ export class GrassField {
   private tempObj = new THREE.Object3D();
   private lastCenterK = -999999;
   private totalGrassCount = 0;
+  private lastFieldParams: { colorTint: { r: number; g: number; b: number }; heightScale: number; densityScale: number } | null = null;
 
   constructor(
     public scene: THREE.Scene,
@@ -288,6 +303,13 @@ export class GrassField {
     this.material.uniforms.uWind.value = wind;
     this.material.uniforms.uAutumn.value = autumn;
     this.material.uniforms.terrainOrigin.value = origin;
+
+    // Get field region parameters at camera position (representative sample)
+    const fieldParams = getFieldRegionParams(this.road, carS, 20); // Sample at 20m offset
+    this.material.uniforms.uFieldColorTint.value.set(fieldParams.colorTint.r, fieldParams.colorTint.g, fieldParams.colorTint.b);
+    this.material.uniforms.uFieldHeightScale.value = fieldParams.heightScale;
+    this.material.uniforms.uFieldDensityScale.value = fieldParams.densityScale;
+    this.lastFieldParams = fieldParams;
 
     // Origin shift: whole grass group moves with origin
     this.group.position.z = origin;
@@ -369,11 +391,17 @@ export class GrassField {
       return seed / 4294967296;
     };
 
+    // Sample field region at slice center for density modulation
+    const fieldParams = getFieldRegionParams(this.road, sMin + this.sliceLen * 0.5, side * ((oMin + oMax) * 0.5));
+    const densityMultiplier = fieldParams.densityScale;
+    const heightMultiplier = fieldParams.heightScale;
+    const effectiveCapacity = Math.floor(capacity * densityMultiplier);
+
     let activeCount = 0;
 
-    for (let i = 0; i < capacity; i++) {
+    for (let i = 0; i < effectiveCapacity; i++) {
       // Stratified longitudinal position with jitter
-      const s = sMin + ((i + rnd()) / capacity) * this.sliceLen;
+      const s = sMin + ((i + rnd()) / effectiveCapacity) * this.sliceLen;
 
       // Lateral offset with non-linear density (slightly denser near the verge)
       const rOffset = isNear ? Math.pow(rnd(), 1.05) : rnd();
@@ -411,6 +439,9 @@ export class GrassField {
         ? THREE.MathUtils.lerp(0.72, 1.05, vergeFactor) + (rnd() - 0.5) * 0.22
         : 1.0 + (rnd() - 0.5) * 0.30;
 
+      // Apply field region height scale
+      const finalScale = baseScale * heightMultiplier;
+
       // Random yaw rotation
       const rotY = rnd() * Math.PI * 2;
 
@@ -418,7 +449,7 @@ export class GrassField {
       const y = groundY - 0.035;
 
       this.tempObj.position.set(p.x, y, p.z);
-      this.tempObj.scale.set(baseScale, baseScale, baseScale);
+      this.tempObj.scale.set(finalScale, finalScale, finalScale);
       this.tempObj.rotation.set(0, rotY, 0);
       this.tempObj.updateMatrix();
 
