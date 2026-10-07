@@ -1,7 +1,6 @@
-# Aftermile — Natural World Quality Pass (Pass 2)
-## Tree Population + Grass + Autumn Ecology + Repetition Cleanup
+# Aftermile — Field + Tree Population + Autumn Leaf Correction Pass
 
-Updated 2026-10-07. Read `PROJECT_CONTEXT.md` first. This local checkpoint delivers the Natural World Quality Pass: dual-stream asymmetric tree population, layered grassland distribution, variegated Autumn meadow ecology, realistic canopy-attached Autumn leaves, square bird removal, and complete asset folder audit.
+Updated 2026-10-07. Read `PROJECT_CONTEXT.md` first. This local checkpoint delivers the Field + Tree Population + Autumn Leaf Correction Pass: macro-zoned asymmetric tree population, layered 3D grassland meadow coverage, light-responsive procedural terrain micro-relief, subtle canopy-attached small autumn leaves, square bird removal, and asset cataloging.
 
 ---
 
@@ -9,59 +8,48 @@ Updated 2026-10-07. Read `PROJECT_CONTEXT.md` first. This local checkpoint deliv
 
 - **Branch:** `main`, repository `https://github.com/kush-16-web/Aftermile.git`
 - **Mode:** **Local testing & development only (DO NOT PUSH without explicit user request)**.
-- **Local checkpoint:** `feat(world): natural world quality pass — asymmetric tree population, rich grassland ecology, canopy leaves and repetition cleanup`
+- **Local checkpoint:** `feat(world): field and tree population pass — macro zones, 3D grassland blanketing, micro-relief terrain, tiny canopy leaves`
 
 ---
 
 ## Completed in This Pass
 
-### 1. Preserved Mature Tree Family with Natural Recurrence (`src/world/Composition.ts`)
+### 1. Preserved Mature Tree Family with Macro Composition Zones (`src/world/Composition.ts`)
 - Preserved all 4 mature tree models (`tree_oak_mature.glb`, `tree_ash_mature.glb`, `tree_roadside.glb`, `tree_pine_tall.glb`).
-- Substantially increased tree presence across the journey without turning the world into a uniform forest wall.
-- True majestic mature scale maintained: trees tower over the R34 vehicle (oaks 20.0–25.5 m, ashes 18.5–23.0 m, roadside 14.5–18.0 m, tall pines 23.0–29.5 m).
+- Substantially increased tree recurrence across the journey with natural rhythm:
+  - **Zone A (Pure Open Meadow):** Vast rolling fields with 0–1 solitary trees.
+  - **Zone B (Scattered Meadow):** Isolated mature trees and loose 3–6 tree groups.
+  - **Zone C (Medium Woodland):** 7–14 tree groves and roadside canopy trees.
+  - **Zone D (Tree-Rich Section):** Large loose 15–25 tree groves and staggered multi-cluster stretches.
+  - **High Vista / Horizon:** Distant tree lines (offset 180–320m) framing mountain ridges.
+  - **Crest Panorama ($5750–6250m):** Kept completely clear for uninterrupted horizon vista.
+- Maintained majestic mature scale (14.5–29.5m) that substantially towers over the R34.
+- Guaranteed Poisson-like breathing room ($\ge 11.5–14.0\text{m}$ min trunk separation) with visible open grass between trunks.
 
-### 2. Eliminated Mirrored & Repeating Placement Across the Road (`src/world/Composition.ts`, `src/world/WorldChunk.ts`)
-- Implemented **independent dual-stream generation** for Left and Right sides:
-  - Left stream: step size 260 m, seed offset `104729`.
-  - Right stream: step size 310 m, seed offset `224737`.
-  - Independent random streams for cluster occurrence, cluster size, species, rotation, scale, and distance from road.
-  - Left and right never align or mirror each other across the asphalt.
-- Enforced Poisson-like anti-stacking spacing within all groups ($\ge 10.5\text{ m}$ trunk separation) so trunks never overlap and open meadow grass is always visible between trees.
+### 2. Zero Left/Right Mirroring (`src/world/Composition.ts`, `src/world/WorldChunk.ts`)
+- Left and right sides are driven by independent random streams with different spatial steps ($155\text{m}$ vs $185\text{m}$), distinct prime seeds, and independent chapter rolls.
+- Never mirrors objects across the asphalt.
 
-### 3. Authored Landscape Rhythm & Open/Enclosed Composition (`src/world/Composition.ts`)
-- Authored dynamic rhythm zones:
-  - **Spawn Opening ($s < 1550\text{ m}$):** Vast open meadow basin with panoramic horizon; exactly ONE solitary majestic hero mature oak at $s \approx 1220\text{ m}$ (height 23.5 m, canopy 11.5 m).
-  - **Open Meadow Negative Space (~26%):** Pure open countryside where sky and rolling hills take center stage.
-  - **Isolated Mature Trees (~18%):** Single towering oaks or ashes standing proud in the fields.
-  - **Loose 3–6 Tree Groups (~26%):** Spaced naturally with visible grass between trunks.
-  - **Medium 6–10 Tree Groves (~14%):** Rich woodland clusters with undergrowth shrubs.
-  - **Roadside Woodland Edges (~10%):** Mature trees closer to the shoulder (offset 22–32 m), canopies overhanging the roadside verge.
-  - **Distant Ridge Tree Lines (~6%):** Trees framing distant horizon ridges (offset 180–320 m).
-  - **Crest Panorama ($5750–6250\text{ m}$):** Maintained completely clear for panoramic crest vista.
+### 3. Layered 3D Grassland Meadow Blanketing (`src/world/WorldChunk.ts`)
+- Deeply enriched 3D grass coverage:
+  - Near verge (11.5–40m): 58 instances/side/chunk of photogrammetric grass tufts (`grass_tuft_near.glb`) and roadside wildflower weeds (`plant_weed.glb`).
+  - Mid field (26–140m): 52 instances/side/chunk of dense photogrammetric wild grass clusters (`grass_field_cluster.glb`) extending deep into open fields.
+- Eliminates bare ground patches near the road and prevents artificial circular cutoff rings.
 
-### 4. Layered Grass & Variegated Autumn Ecology (`src/world/WorldChunk.ts`, `src/world/TerrainMaterial.ts`)
-- Independent Left and Right streams for ground cover in `WorldChunk.ts`:
-  - Near verge (12–38 m): photogrammetric grass tufts (`grass_tuft_near.glb`) and roadside wildflower weeds (`plant_weed.glb`).
-  - Mid field (28–120 m): large photogrammetric grass clusters (`grass_field_cluster.glb`) continuing seamlessly into the open meadow.
-- Refined procedural grassland shader in `TerrainMaterial.ts`:
-  - Multi-tier noise breakup: macro field patches, meadow variegation, clump breakup, and micro-grain.
-  - Variegated Autumn ecology: muted olive green, warm golden amber, straw yellow, burnt russet, and dry loam tones.
+### 4. Light-Responsive Procedural Terrain Micro-Relief (`src/world/TerrainMaterial.ts`)
+- Added procedural micro-relief normal perturbation derived from noise gradients in view space: grass blades and soil clumps catch directional sunlight and low evening rays.
+- Modulated surface roughness ($0.78–0.98$) across meadow patches, soil loam, and rain wetness.
+- Variegated Autumn ecology palette: muted olive green, golden amber, straw yellow, burnt russet, and dry loam.
 
-### 5. Fixed Autumn Leaves System Completely (`src/weather/Particles.ts`, `src/world/Materials.ts`, `src/world/WorldChunk.ts`)
-- **Leaf Size:** Downscaled particle geometry from 0.38 m giant panels to realistic 0.10 m (8.5–12 cm true-to-life leaf scale).
-- **Atlas Shader:** 4 distinct leaf variants (Sugar Maple, Lobed Oak, Scarlet Maple, Birch) rendered through an instanced UV offset shader.
-- **Strict Canopy Emitters:** Leaves strictly originate from nearby active broadleaf canopies ($r < 0.72 \times \text{canopyRadius}$, $y \in [\text{canopyBottom}, \text{canopyTop}]$). No leaves spawn in open fields without nearby trees.
-- **Flight Physics:** Gentle fall rate ($1.05\text{ m/s}$), global wind drift, sinusoidal flutter, tumble rotation, and car aerodynamic wake displacement.
-- **Ground Settling:** Falling leaves settle onto grass/ground beneath canopies for 6–12 seconds.
-- **Clean Highway:** Scaled fallen leaf decals to 0.14 m. Open road without nearby trees remains clean; leaves only appear on asphalt where canopies overhang near the shoulder.
+### 5. Rebuilt Autumn Leaf System (`src/weather/Particles.ts`, `src/world/Materials.ts`, `src/world/WorldChunk.ts`)
+- **Tiny Realistic Scale:** 7.5cm base geometry producing delicate 6.5–8.5cm fluttering autumn leaves.
+- **Subtle Density:** Reduced pool from 320 to 80 particles; active leaves capped at 25–45 subtle occasional particles.
+- **Strict Canopy-Attachment:** Emitters strictly attach to active broadleaf tree canopies ($r < 0.55 \times \text{canopyRadius}$). Treeless open highway sections have zero falling leaves.
+- **Natural Flight & Wake:** Flutter with world wind ($0.95\text{ m/s}$ fall rate), tumble spin, settling into grass below, and subtle aerodynamic wake displacement when driving past.
+- **Clean Asphalt:** Fallen leaf decals ($0.14\text{m}$) concentrate tightly beneath canopies. Open highways remain clean.
 
-### 6. Removed Square / Primitive Birds (`src/world/AmbientLife.ts`)
-- Removed all primitive box bird meshes from the scene.
-- Retained spatial audio trigger logic (`onBirdNearby`) for ambient wildlife sound cues.
-
-### 7. Asset Folder Audit & Documentation (`ASSET_CLEANUP.md`, `WORLD_ASSETS.md`)
-- Created `ASSET_CLEANUP.md` with audit classifications (Category A–H) and KEEP/VERIFY recommendations.
-- Updated `WORLD_ASSETS.md` with full provenance, CC0/MIT licensing, and optimization details.
+### 6. R34 / Vehicle Integrity
+- Zero modifications to R34 physics, steering, `maxAngleBySpeed`, drift, braking, audio, or cameras. User's manual steering tuning in `R34.ts` preserved untouched.
 
 ---
 
@@ -69,8 +57,7 @@ Updated 2026-10-07. Read `PROJECT_CONTEXT.md` first. This local checkpoint deliv
 
 - `npm run typecheck`: **0 errors** (strict TypeScript).
 - `npm test`: **Passing** all environment, composition, world foundation, and world asset tests.
-- `npm run build`: **0 errors** (clean production bundle generated).
-- Frozen subsystems untouched: R34 physics, steering, vehicle audio, cameras, HUD/UI, minimap, and garage intact.
+- `npm run build`: **0 errors** (production bundle generated in `dist/`).
 
 ---
 
@@ -82,12 +69,12 @@ npm run dev
 ```
 
 ### Personal Test Scenario: **AUTUMN + EVENING**
-1. Select **Autumn** environment and **Evening** time of day.
-2. Start driving the R34:
-   - Notice the vast, believable open meadow at spawn with golden-amber and olive ecological grass tones.
-   - Solitary majestic mature oak standing in the open field at $s \approx 1200\text{ m}$.
-   - Asymmetric landscape: left and right sides have completely independent, non-repeating rhythms.
-   - Towering mature trees appearing naturally across the countryside (loose groups, roadside canopies, medium groves, and wide open negative space).
-   - Tiny realistic falling autumn leaves fluttering near tree canopies and settling into grass.
-   - Highway remains clean across open stretches.
-   - Zero square box birds in the sky.
+1. Launch game in **Autumn + Evening**.
+2. Drive the R34:
+   - Notice the rich, continuous 3D grass meadow extending from the roadside verge into the distant fields.
+   - Solitary mature oak in the meadow basin at $s \approx 1200\text{ m}$.
+   - Encounter recurring, varied tree compositions (isolated trees, loose 3–6 groups, medium 7–14 groves, large loose 15–25 groves, and roadside canopies) with natural breathing room between trunks.
+   - Distinct, non-repeating left and right sides.
+   - Tiny delicate autumn leaves fluttering only near actual tree canopies and settling into grass.
+   - Clean open asphalt across treeless field stretches.
+   - Clean, serene sky with no box birds.

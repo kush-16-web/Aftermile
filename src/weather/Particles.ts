@@ -3,7 +3,7 @@ import type { WeatherState } from './Weather.ts';
 import type { LeafSource } from '../world/WorldChunk.ts';
 import { clamp, hash, lerp } from '../core/math.ts';
 
-const MAX_LEAVES = 320;
+const MAX_LEAVES = 80;
 const MAX_RAIN = 1800;
 const MAX_SNOW = 1200;
 const MAX_SPRAY = 200;
@@ -143,7 +143,8 @@ export class Particles {
     this.leafTexture.colorSpace = THREE.SRGBColorSpace;
 
     // Leaf Instanced Mesh (Double-sided plane with instance atlas shader)
-    const leafGeom = new THREE.PlaneGeometry(0.10, 0.10);
+    // Scaled to realistic 7.5cm base quad, yielding 6.5–8.5cm tiny fluttering leaves
+    const leafGeom = new THREE.PlaneGeometry(0.075, 0.075);
     const leafTypes = new Float32Array(MAX_LEAVES);
     for (let i = 0; i < MAX_LEAVES; i++) {
       leafTypes[i] = Math.floor(hash(i, 1001) * 4);
@@ -196,10 +197,10 @@ export class Particles {
     // sources when autumn is active, so open fields never get unattached floating leaves.
     for (let i = 0; i < MAX_LEAVES; i++) {
       const ang = hash(i, 991) * Math.PI * 2;
-      const rad = 2 + hash(i, 992) * 8;
+      const rad = 1.5 + hash(i, 992) * 6;
       this.leafData.push({
         x: Math.cos(ang) * rad,
-        y: 1.5 + hash(i, 993) * 12,
+        y: 1.5 + hash(i, 993) * 10,
         z: Math.sin(ang) * rad,
         vx: 0, vy: 0, vz: 0,
         rotX: hash(i, 994) * Math.PI * 2,
@@ -208,7 +209,7 @@ export class Particles {
         rotSpeedX: (hash(i, 997) - 0.5) * 2.8,
         rotSpeedY: (hash(i, 998) - 0.5) * 2.8,
         rotSpeedZ: (hash(i, 999) - 0.5) * 2.8,
-        scale: 0.85 + hash(i, 1000) * 0.35,
+        scale: 0.85 + hash(i, 1000) * 0.30,
         type: Math.floor(hash(i, 1001) * 4),
         phase: hash(i, 1002) * Math.PI * 2,
         sourceKey: -1,
@@ -435,16 +436,16 @@ export class Particles {
     // 3. UPDATE AUTUMN LEAVES (tree-local flutter, settling and car wake)
     // ----------------------------------------------------
     const nearbySources = leafSources
-      .filter(source => source.load > 0.12 && Math.hypot(source.x - center.x, source.z - center.z) < 75)
+      .filter(source => source.load > 0.35 && Math.hypot(source.x - center.x, source.z - center.z) < 65)
       .sort((a, b) => Math.hypot(a.x - center.x, a.z - center.z) - Math.hypot(b.x - center.x, b.z - center.z))
-      .slice(0, 18);
+      .slice(0, 10);
 
     const canopyLoad = nearbySources.reduce((sum, source) => sum + source.load, 0);
     this.leafMesh.visible = !inTunnel && w.autumn > 0.08 && quality > 0 && leafDensity > 0.01 && nearbySources.length > 0;
 
     if (this.leafMesh.visible) {
-      const coverage = clamp(canopyLoad / 6, 0.25, 1.0);
-      const activeLeaves = Math.min(MAX_LEAVES, Math.floor(MAX_LEAVES * quality * w.autumn * coverage));
+      const coverage = clamp(canopyLoad / 4, 0.25, 1.0);
+      const activeLeaves = Math.min(MAX_LEAVES, Math.floor(MAX_LEAVES * quality * w.autumn * coverage * 0.70));
 
       for (let i = 0; i < MAX_LEAVES; i++) {
         if (i >= activeLeaves) {
@@ -463,10 +464,10 @@ export class Particles {
 
         const place = (ground: boolean) => {
           const angle = hash(i + source.key, 1201) * Math.PI * 2;
-          const radius = source.radius * (0.15 + hash(i + source.key, 1202) * 0.72);
+          const radius = source.radius * (0.10 + hash(i + source.key, 1202) * 0.55);
           l.x = sx + Math.cos(angle) * radius;
           l.z = sz + Math.sin(angle) * radius;
-          l.y = ground ? 0.06 : sy + (-0.25 + hash(i + source.key, 1203) * 0.55) * source.radius;
+          l.y = ground ? 0.05 : sy + (-0.20 + hash(i + source.key, 1203) * 0.45) * source.radius;
           l.vx = l.vy = l.vz = 0;
           l.sourceKey = source.key;
           l.settled = ground;
@@ -477,47 +478,47 @@ export class Particles {
           place(false);
         }
 
-        l.phase += dt * (1.6 + l.scale * 0.4);
+        l.phase += dt * (1.5 + l.scale * 0.4);
 
         if (l.settled) {
           l.settledTime += dt;
-          if (l.settledTime > 6.0 + hash(i, 1204) * 6.0) {
+          if (l.settledTime > 5.5 + hash(i, 1204) * 5.0) {
             place(false);
           }
         } else {
           // Gentle organic flutter influenced by global wind
-          const flutterX = Math.sin(l.phase * 1.6) * 0.75 + windX * 0.9;
-          const flutterZ = Math.cos(l.phase * 1.3) * 0.65 + windZ * 0.9;
-          const fallRate = 1.05 * (0.85 + l.scale * 0.3);
+          const flutterX = Math.sin(l.phase * 1.6) * 0.55 + windX * 0.75;
+          const flutterZ = Math.cos(l.phase * 1.3) * 0.45 + windZ * 0.75;
+          const fallRate = 0.95 * (0.85 + l.scale * 0.3);
 
-          // Car wake aerodynamics
+          // Subtle car wake aerodynamics
           const distToCar = Math.hypot(l.x, l.z);
-          if (distToCar < 5.0 && Math.abs(carSpeed) > 3) {
-            const wakeFactor = (1.0 - distToCar / 5.0) * Math.min(Math.abs(carSpeed) * 0.25, 8.0);
+          if (distToCar < 4.5 && Math.abs(carSpeed) > 3) {
+            const wakeFactor = (1.0 - distToCar / 4.5) * Math.min(Math.abs(carSpeed) * 0.20, 6.0);
             const pushAngle = Math.atan2(l.x, l.z);
-            l.vx += Math.sin(pushAngle) * wakeFactor * 1.4;
-            l.vz += Math.cos(pushAngle) * wakeFactor - Math.sign(carSpeed) * wakeFactor * 0.4;
-            l.vy += wakeFactor * 0.6;
+            l.vx += Math.sin(pushAngle) * wakeFactor * 1.2;
+            l.vz += Math.cos(pushAngle) * wakeFactor - Math.sign(carSpeed) * wakeFactor * 0.3;
+            l.vy += wakeFactor * 0.5;
             const jitter = hash(i, 1205) - 0.5;
-            l.rotSpeedX += jitter * wakeFactor * 2.0;
-            l.rotSpeedY -= jitter * wakeFactor * 1.5;
+            l.rotSpeedX += jitter * wakeFactor * 1.8;
+            l.rotSpeedY -= jitter * wakeFactor * 1.2;
           }
 
           l.x += (flutterX + l.vx) * dt;
           l.y += (-fallRate + l.vy) * dt;
-          l.z += (flutterZ + l.vz - carSpeed * 0.3) * dt;
+          l.z += (flutterZ + l.vz - carSpeed * 0.25) * dt;
 
           l.vx *= 1.0 - 2.8 * dt;
           l.vy *= 1.0 - 3.0 * dt;
           l.vz *= 1.0 - 2.8 * dt;
 
-          if (l.y < 0.06) {
-            l.y = 0.06;
-            l.x = lerp(l.x, sx, 0.1);
-            l.z = lerp(l.z, sz, 0.1);
+          if (l.y < 0.05) {
+            l.y = 0.05;
+            l.x = lerp(l.x, sx, 0.12);
+            l.z = lerp(l.z, sz, 0.12);
             l.settled = true;
             l.settledTime = 0;
-          } else if (Math.hypot(l.x - sx, l.z - sz) > source.radius * 2.0) {
+          } else if (Math.hypot(l.x - sx, l.z - sz) > source.radius * 1.6) {
             place(false);
           }
         }

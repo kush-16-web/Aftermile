@@ -342,11 +342,11 @@ export class WorldChunk {
     for (const side of grassSides) {
       const sideRng = rng(index * 211 + (side === 1 ? 503 : 919));
 
-      // Near field (12-38m): detailed grass tufts and roadside weeds
-      const nearCount = Math.floor(32 * vegetation);
+      // Near field (11.5-40m): detailed grass tufts and roadside weeds
+      const nearCount = Math.floor(58 * vegetation);
       for (let i = 0; i < nearCount; i++) {
         const s = this.start + sideRng() * CHUNK;
-        const offset = side * (12.5 + Math.pow(sideRng(), 1.4) * 26);
+        const offset = side * (11.5 + Math.pow(sideRng(), 1.3) * 28.5);
         const w = road.weights(s);
         if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
         const pos = groundPoint(s, offset);
@@ -358,16 +358,16 @@ export class WorldChunk {
         batch.add('ground-cover', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, sideRng() * Math.PI * 2);
       }
 
-      // Mid field (28-120m): larger photogrammetric grass clusters continuing into the meadow
-      const fieldCount = Math.floor(26 * vegetation);
+      // Mid field (26-140m): dense photogrammetric grass clusters blanketing the open meadow
+      const fieldCount = Math.floor(52 * vegetation);
       for (let i = 0; i < fieldCount; i++) {
         const s = this.start + sideRng() * CHUNK;
-        const offset = side * (28 + Math.pow(sideRng(), 1.5) * 92);
+        const offset = side * (26 + Math.pow(sideRng(), 1.4) * 115);
         const w = road.weights(s);
         if (road.isBridge(s) || road.isTunnel(s) || (offset < 0 && w.coast > 0.22)) continue;
         const pos = groundPoint(s, offset);
         if (pos.y < 8) continue;
-        const scale = 0.9 + sideRng() * 0.7;
+        const scale = 0.95 + sideRng() * 0.75;
         if (this.assets?.add(batch, 'grass_field', 'grass-field', pos.x, pos.y, pos.z, scale, sideRng() * Math.PI * 2)) continue;
         batch.add('mid-grass', m.grassShape, m.grass, pos.x, pos.y, pos.z, scale, scale, scale, sideRng() * Math.PI * 2);
       }

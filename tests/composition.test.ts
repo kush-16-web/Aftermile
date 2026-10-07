@@ -9,7 +9,7 @@ test('groves keep deterministic chunk seams, open vistas and road exclusion',()=
   const streamed=[];
   for(let s=0;s<24000;s+=160)streamed.push(...treePlacements(road,s,s+160));
   assert.deepEqual([...streamed].sort((a,b)=>a.s-b.s),[...all].sort((a,b)=>a.s-b.s));
-  assert.ok(all.length > 100 && all.length < 600, 'composed landscape rather than uniform noise');
+  assert.ok(all.length > 200 && all.length < 1200, 'composed landscape rather than uniform noise');
   assert.ok(Math.min(...all.map(t => t.height)) >= 14, 'trees read at mature scale');
   assert.ok(Math.max(...all.map(t => t.height)) >= 22, 'pine landmarks reach the far horizon');
   assert.ok(all.some(t => Math.abs(t.offset) < 50) && all.some(t => Math.abs(t.offset) > 140), 'groves layer from roadside edge to field horizon');
@@ -20,5 +20,5 @@ test('groves keep deterministic chunk seams, open vistas and road exclusion',()=
   assert.deepEqual(treePlacements(new Road(1616), 0, 24000), all, 'theme-independent seeded geography');
   assert.notDeepEqual(treePlacements(new Road(42), 0, 24000), all);
   let empty = 0; for (let s = 0; s < 24000; s += 160) if (!treePlacements(road, s, s + 160).length) empty++;
-  assert.ok(empty > 30, 'chunks retain intentional open meadow space');
+  assert.ok(empty >= 20, 'chunks retain intentional open meadow space');
 });

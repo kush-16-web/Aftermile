@@ -29,17 +29,17 @@ export const R34Config: VehicleConfig = {
     /** Max road wheel angle by speed [m/s, radians].
      * 0 km/h: 34.4°, 10 km/h: 32.1°, 30 km/h: 19.5°, 60 km/h: 9.2°, 100 km/h: 3.72°, 130 km/h: 2.52°, 160 km/h: 1.83°
      */
-   maxAngleBySpeed: [
-      [0,       0.60],  // 0 km/h
-      [2.7778,  0.56],  // 10
-      [8.3333,  0.38],  // 30
-      [16.6667, 0.22],  // 60
-      [27.7778, 0.11],  // 100
-      [36.1111, 0.070], // 130
-      [44.4444, 0.055], // 160
-      [55.5556, 0.038], // 200
-      [73,      0.028], // 263
-    ],
+maxAngleBySpeed: [
+      [0,       0.60],  // 0 km/h
+      [2.7778,  0.56],  // 10
+      [8.3333,  0.38],  // 30
+      [16.6667, 0.22],  // 60
+      [27.7778, 0.11],  // 100
+      [36.1111, 0.10], // 130
+      [44.4444, 0.10], // 160
+      [55.5556, 0.09], // 200
+      [73,      0.08], // 263
+    ],  
     /** Ramp-in speed (1/s): how quickly the digital key input rises to full demand. */
     inputRate: 7.0,
     /** Highway ramp-in speed (1/s): ramp-in rate at highway speeds for smooth transitions. */
