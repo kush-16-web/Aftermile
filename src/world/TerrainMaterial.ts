@@ -41,65 +41,79 @@ export class TerrainMaterial extends THREE.MeshStandardMaterial {
 
       shader.fragmentShader = shader.fragmentShader.replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
         vec2 posR = vTerrainWorld.xz;
-        float meadowRough = terrainNoise(posR * 0.015);
-        roughnessFactor = mix(0.78, 0.98, meadowRough);
-        if (terrainWet > 0.08) roughnessFactor *= (1.0 - terrainWet * 0.60);
+        float meadowRough = terrainNoise(posR * 0.018);
+        float microRough = terrainNoise(posR * 0.45);
+        roughnessFactor = mix(0.82, 0.98, meadowRough * 0.7 + microRough * 0.3);
+        if (terrainWet > 0.08) roughnessFactor *= (1.0 - terrainWet * 0.55);
       `);
 
       shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        // Procedural micro-relief: grass clumps and soil textures perturb normal in view space
-        float grainFadeN = clamp(1.0 - vCamDist * 0.004, 0.0, 1.0);
+        // High-fidelity procedural turf micro-relief: captures grazing evening sunlight
+        float grainFadeN = clamp(1.0 - vCamDist * 0.008, 0.0, 1.0);
         if (grainFadeN > 0.01) {
           vec2 posN = vTerrainWorld.xz;
-          float dStep = 0.12;
-          float hL = terrainNoise((posN - vec2(dStep, 0.0)) * 0.22) + terrainNoise((posN - vec2(dStep, 0.0)) * 1.8) * 0.35;
-          float hR = terrainNoise((posN + vec2(dStep, 0.0)) * 0.22) + terrainNoise((posN + vec2(dStep, 0.0)) * 1.8) * 0.35;
-          float hD = terrainNoise((posN - vec2(0.0, dStep)) * 0.22) + terrainNoise((posN - vec2(0.0, dStep)) * 1.8) * 0.35;
-          float hU = terrainNoise((posN + vec2(0.0, dStep)) * 0.22) + terrainNoise((posN + vec2(0.0, dStep)) * 1.8) * 0.35;
-          vec3 grassNormOffset = normalize(vec3((hL - hR) * 0.55, 1.0, (hD - hU) * 0.55));
+          float dStep = 0.16;
+          float hL = terrainNoise((posN - vec2(dStep, 0.0)) * 0.35) + terrainNoise((posN - vec2(dStep, 0.0)) * 2.2) * 0.30;
+          float hR = terrainNoise((posN + vec2(dStep, 0.0)) * 0.35) + terrainNoise((posN + vec2(dStep, 0.0)) * 2.2) * 0.30;
+          float hD = terrainNoise((posN - vec2(0.0, dStep)) * 0.35) + terrainNoise((posN - vec2(0.0, dStep)) * 2.2) * 0.30;
+          float hU = terrainNoise((posN + vec2(0.0, dStep)) * 0.35) + terrainNoise((posN + vec2(0.0, dStep)) * 2.2) * 0.30;
+          vec3 grassNormOffset = normalize(vec3((hL - hR) * 0.48, 1.0, (hD - hU) * 0.48));
           vec3 viewGrassNorm = normalize(mat3(viewMatrix) * grassNormOffset);
-          normal = normalize(mix(normal, viewGrassNorm, grainFadeN * 0.42));
+          normal = normalize(mix(normal, viewGrassNorm, grainFadeN * 0.36));
         }
       `);
 
       shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
-        // Multi-tier natural grassland composition
+        // Multi-tier natural grassland composition matching near 3D grass clumps
         vec2 pos = vTerrainWorld.xz;
-        float macroFields = terrainNoise(pos * 0.0022);
-        float meadowPatches = terrainFbm(pos * 0.014);
-        float grassClumps = terrainNoise(pos * 0.15);
-        float microGrain = terrainNoise(pos * 2.8);
+        float macroFields = terrainNoise(pos * 0.0016);
+        float meadowDrift = terrainFbm(pos * 0.011 + vec2(2.1, 4.7));
+        float turfClumps = terrainNoise(pos * 0.18);
+        float fineClumpTexture = terrainNoise(pos * 0.72);
+        float microBladeGrain = terrainNoise(pos * 3.4);
 
         // Anti-aliased micro grain falloff with distance
-        float grainFade = clamp(1.0 - vCamDist * 0.003, 0.0, 1.0);
-        microGrain = mix(0.5, microGrain, grainFade);
+        float grainFade = clamp(1.0 - vCamDist * 0.006, 0.0, 1.0);
+        microBladeGrain = mix(0.5, microBladeGrain, grainFade);
 
-        // Organic grassland tonal variation
-        vec3 lushGrass = vec3(0.40, 0.52, 0.25);
-        vec3 sunlitMeadow = vec3(0.56, 0.65, 0.32);
-        vec3 dryGrass = vec3(0.68, 0.64, 0.38);
-        vec3 soilLoam = vec3(0.42, 0.34, 0.24);
+        // 4 Harmonic Meadow Field Biomes matching 3D grass clumps:
+        // 1. Green Meadow (lush clover & rye in fertile hollows)
+        vec3 greenMeadow = vec3(0.38, 0.48, 0.22);
+        // 2. Open Pasture (vibrant sunlit yellow-green)
+        vec3 sunlitPasture = vec3(0.52, 0.60, 0.28);
+        // 3. Wild Meadow (warm sage-olive & mixed field grasses)
+        vec3 wildMeadow = vec3(0.46, 0.52, 0.25);
+        // 4. Dry Meadow (sun-cured golden straw grass on ridges)
+        vec3 dryMeadow = vec3(0.64, 0.58, 0.32);
+        // Moist loam soil in low tufts
+        vec3 loamSoil = vec3(0.36, 0.30, 0.20);
 
-        vec3 fieldColor = mix(lushGrass, sunlitMeadow, meadowPatches);
-        fieldColor = mix(fieldColor, dryGrass, macroFields * 0.48);
-        fieldColor = mix(fieldColor, soilLoam, (1.0 - grassClumps) * 0.26);
+        vec3 fieldColor = mix(greenMeadow, sunlitPasture, meadowDrift);
+        fieldColor = mix(fieldColor, wildMeadow, smoothstep(0.35, 0.65, macroFields));
+        fieldColor = mix(fieldColor, dryMeadow, smoothstep(0.65, 0.95, macroFields) * 0.65);
+        fieldColor = mix(fieldColor, loamSoil, (1.0 - turfClumps) * 0.22);
 
-        // Blend with vertex base palette (which handles rock slopes, sand, wet coast)
-        diffuseColor.rgb *= 0.70 + meadowPatches * 0.38 + grassClumps * 0.18 + microGrain * 0.08;
-        diffuseColor.rgb = mix(diffuseColor.rgb, fieldColor * diffuseColor.rgb * 1.95, 0.52);
+        // Clump lighting breakup: mimics the self-shadowing of dense grass clumps into the distance
+        float clumpShadow = 0.82 + turfClumps * 0.24 + fineClumpTexture * 0.14 + microBladeGrain * 0.06;
+        diffuseColor.rgb *= clumpShadow;
+        diffuseColor.rgb = mix(diffuseColor.rgb, fieldColor * diffuseColor.rgb * 1.85, 0.58);
 
-        // Autumn mode: rich variegated ecology (muted olive, golden amber, straw yellow, warm russet, and dry loam)
-        vec3 autumnOlive = vec3(0.50, 0.58, 0.26);
-        vec3 autumnAmber = vec3(0.78, 0.58, 0.22);
-        vec3 autumnStraw = vec3(0.85, 0.72, 0.34);
-        vec3 autumnRusset = vec3(0.66, 0.38, 0.16);
-        vec3 autumnDry = vec3(0.48, 0.42, 0.28);
+        // Autumn mode: restrained, authentic countryside ecology (olive, golden green, straw yellow, dry tan)
+        // Strictly avoids neon orange or bleached yellow plates
+        if (terrainAutumn > 0.01) {
+          vec3 autumnOlive = vec3(0.48, 0.54, 0.24);
+          vec3 autumnGold = vec3(0.62, 0.56, 0.28);
+          vec3 autumnStraw = vec3(0.70, 0.62, 0.32);
+          vec3 autumnTan = vec3(0.54, 0.46, 0.28);
+          vec3 autumnEarth = vec3(0.38, 0.32, 0.22);
 
-        vec3 autumnTone = mix(autumnOlive, autumnAmber, meadowPatches);
-        autumnTone = mix(autumnTone, autumnStraw, macroFields * 0.65);
-        autumnTone = mix(autumnTone, autumnRusset, (1.0 - grassClumps) * 0.45);
-        autumnTone = mix(autumnTone, autumnDry, microGrain * 0.25);
-        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * autumnTone * 2.1, terrainAutumn * 0.94);
+          vec3 autumnTone = mix(autumnOlive, autumnGold, meadowDrift);
+          autumnTone = mix(autumnTone, autumnStraw, smoothstep(0.4, 0.8, macroFields) * 0.70);
+          autumnTone = mix(autumnTone, autumnTan, (1.0 - turfClumps) * 0.35);
+          autumnTone = mix(autumnTone, autumnEarth, (1.0 - fineClumpTexture) * 0.20);
+
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * autumnTone * 1.62, terrainAutumn * 0.90);
+        }
 
         // Rain wetness darkening
         diffuseColor.rgb *= 1.0 - terrainWet * 0.22;
@@ -107,9 +121,9 @@ export class TerrainMaterial extends THREE.MeshStandardMaterial {
         // Winter snow accumulation
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.82, 0.86, 0.88), terrainSnow * 0.92);
 
-        // Atmospheric perspective: softly soften contrast and saturate distant mountains
-        float haze = smoothstep(400.0, 2800.0, vCamDist);
-        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.92 + vec3(0.04, 0.06, 0.09), haze * 0.35);
+        // Atmospheric perspective: softly soften contrast and saturate distant horizon hills
+        float haze = smoothstep(450.0, 2600.0, vCamDist);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.94 + vec3(0.04, 0.06, 0.08), haze * 0.32);
       `);
     };
   }

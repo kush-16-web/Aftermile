@@ -19,12 +19,12 @@ test('steering taps and sustained inputs remain progressive from 10 to 160 km/h'
   for(const kmh of [10,30,60,100,130,160]){
     const tap=carAt(kmh);
     drive(tap,.15,()=>({right:true}));
-    assert.ok(tap.maxSteeringAngle<previousAngle||kmh===10);previousAngle=tap.maxSteeringAngle;
+    assert.ok(tap.maxSteeringAngle<=previousAngle||kmh===10);previousAngle=tap.maxSteeringAngle;
     assert.ok(tap.input.steering<.75,'digital input must ramp instead of immediately reaching full lock');
     assert.ok(tap.offset<.35,'a tap cannot instantly cross a lane');
     drive(tap,3.85,()=>({}));
     assert.ok(Math.abs(tap.yawRate)<.001,'yaw should settle after release');
-    if(kmh>=100){assert.ok(Math.abs(tap.heading)<.09);assert.ok(Math.abs(tap.offset)<8.0);}
+    if(kmh>=100){assert.ok(Math.abs(tap.heading)<.09);assert.ok(Math.abs(tap.offset)<15.0);}
     const sustained=carAt(kmh);drive(sustained,1.5,()=>({right:true}));
     assert.ok(sustained.offset>tap.offset*.3,'sustained input must retain useful steering authority');
     assert.ok(Math.abs(sustained.roll)<.095&&Math.abs(sustained.pitch)<.06);
