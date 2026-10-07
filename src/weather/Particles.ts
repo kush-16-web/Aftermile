@@ -3,7 +3,7 @@ import type { WeatherState } from './Weather.ts';
 import type { LeafSource } from '../world/WorldChunk.ts';
 import { clamp, hash, lerp } from '../core/math.ts';
 
-const MAX_LEAVES = 80;
+const MAX_LEAVES = 40;
 const MAX_RAIN = 1800;
 const MAX_SNOW = 1200;
 const MAX_SPRAY = 200;
@@ -49,6 +49,7 @@ export class Particles {
   private leafData: LeafParticle[] = [];
   private leafDummy = new THREE.Object3D();
   private leafTexture: THREE.CanvasTexture;
+  private activeLeafSources: LeafSource[] = [];
 
   // Wet Tire Spray System
   private sprayMesh: THREE.InstancedMesh;
@@ -143,22 +144,20 @@ export class Particles {
     this.leafTexture.colorSpace = THREE.SRGBColorSpace;
 
     // Leaf Instanced Mesh (Double-sided plane with instance atlas shader)
-    // Scaled to realistic 7.5cm base quad, yielding 6.5–8.5cm tiny fluttering leaves
-    const leafGeom = new THREE.PlaneGeometry(0.075, 0.075);
+    // Scaled to realistic 5.5cm base quad, yielding subtle natural fluttering leaves
+    const leafGeom = new THREE.PlaneGeometry(0.055, 0.055);
     const leafTypes = new Float32Array(MAX_LEAVES);
     for (let i = 0; i < MAX_LEAVES; i++) {
       leafTypes[i] = Math.floor(hash(i, 1001) * 4);
     }
     leafGeom.setAttribute('instanceLeafType', new THREE.InstancedBufferAttribute(leafTypes, 1));
 
-    const leafMat = new THREE.MeshStandardMaterial({
+    const leafMat = new THREE.MeshBasicMaterial({
       map: this.leafTexture,
       transparent: true,
-      alphaTest: 0.15,
-      roughness: 0.8,
-      metalness: 0.05,
+      alphaTest: 0.1,
       side: THREE.DoubleSide,
-      depthWrite: true,
+      depthWrite: false,
     });
 
     leafMat.onBeforeCompile = (shader) => {
@@ -217,6 +216,7 @@ export class Particles {
         settledTime: 0,
       });
     }
+
 
     // ==========================================
     // 2. PROCEDURAL FEATHERED SNOWFLAKE TEXTURE
@@ -432,20 +432,27 @@ export class Particles {
     // ----------------------------------------------------
     // 3. UPDATE AUTUMN LEAVES (tree-local flutter, settling and car wake)
     // ----------------------------------------------------
-    // ----------------------------------------------------
-    // 3. UPDATE AUTUMN LEAVES (tree-local flutter, settling and car wake)
-    // ----------------------------------------------------
-    const nearbySources = leafSources
-      .filter(source => source.load > 0.35 && Math.hypot(source.x - center.x, source.z - center.z) < 65)
-      .sort((a, b) => Math.hypot(a.x - center.x, a.z - center.z) - Math.hypot(b.x - center.x, b.z - center.z))
-      .slice(0, 10);
+    this.activeLeafSources.length = 0;
+    let canopyLoad = 0;
+    for (let sIdx = 0; sIdx < leafSources.length; sIdx++) {
+      const source = leafSources[sIdx];
+      if (source.load <= 0.35) continue;
+      const dx = source.x - center.x;
+      const dz = source.z - center.z;
+      if (dx * dx + dz * dz < 45 * 45) {
+        this.activeLeafSources.push(source);
+        canopyLoad += source.load;
+        if (this.activeLeafSources.length >= 8) break;
+      }
+    }
 
-    const canopyLoad = nearbySources.reduce((sum, source) => sum + source.load, 0);
+    const nearbySources = this.activeLeafSources;
     this.leafMesh.visible = !inTunnel && w.autumn > 0.08 && quality > 0 && leafDensity > 0.01 && nearbySources.length > 0;
 
     if (this.leafMesh.visible) {
       const coverage = clamp(canopyLoad / 4, 0.25, 1.0);
       const activeLeaves = Math.min(MAX_LEAVES, Math.floor(MAX_LEAVES * quality * w.autumn * coverage * 0.70));
+
 
       for (let i = 0; i < MAX_LEAVES; i++) {
         if (i >= activeLeaves) {

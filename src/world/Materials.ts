@@ -110,6 +110,25 @@ export class Materials {
     };
   }
 
+  // Cached static colors for zero-allocation per-frame update
+  private static readonly C_BASE_ASPHALT = new THREE.Color(0x404a50);
+  private static readonly C_WET_ASPHALT = new THREE.Color(0x181d22);
+  private static readonly C_SNOW_ASPHALT = new THREE.Color(0xbac4c8);
+  private static readonly C_LEAF_BASE = new THREE.Color(0x496452);
+  private static readonly C_LEAF_AUTUMN = new THREE.Color(0xc96f2a);
+  private static readonly C_LEAF_SNOW = new THREE.Color(0xc7d1d1);
+  private static readonly C_PINE_BASE = new THREE.Color(0x284b43);
+  private static readonly C_PINE_AUTUMN = new THREE.Color(0x756b3e);
+  private static readonly C_PINE_SNOW = new THREE.Color(0xa5b9b9);
+  private static readonly C_GRASS_BASE = new THREE.Color(0x8e9870);
+  private static readonly C_GRASS_AUTUMN = new THREE.Color(0xa79c65);
+  private static readonly C_GRASS_SNOW = new THREE.Color(0xe0e6e3);
+  private static readonly C_ROCK_BASE = new THREE.Color(0x80796b);
+  private static readonly C_ROCK_SNOW = new THREE.Color(0xd5dcdf);
+  private static readonly C_CONCRETE_BASE = new THREE.Color(0x979c96);
+  private static readonly C_CONCRETE_SNOW = new THREE.Color(0xd6dcdf);
+  private tempColor = new THREE.Color();
+
   update(
     wet: number,
     snow: number,
@@ -122,22 +141,22 @@ export class Materials {
   ) {
     this.timeUniform.value = time;
     this.windUniform.value = wind * 0.05;
-    this.terrain.uniforms.terrainAutumn.value=autumn;
-    this.terrain.uniforms.terrainSnow.value=snow;
-    this.terrain.uniforms.terrainWet.value=wet;
+    this.terrain.uniforms.terrainAutumn.value = autumn;
+    this.terrain.uniforms.terrainSnow.value = snow;
+    this.terrain.uniforms.terrainWet.value = wet;
 
     this.asphalt.roughness = reflections ? Math.max(0.22, 0.86 - wet * 0.64) : 0.86;
     this.asphalt.metalness = reflections ? Math.min(0.32, 0.04 + wet * 0.26) : 0.04;
-    const baseAsphalt = new THREE.Color(0x404a50).lerp(new THREE.Color(0x181d22), wet * 0.58);
-    this.asphalt.color.copy(baseAsphalt).lerp(new THREE.Color(0xbac4c8), snow * 0.23);
+    this.tempColor.copy(Materials.C_BASE_ASPHALT).lerp(Materials.C_WET_ASPHALT, wet * 0.58);
+    this.asphalt.color.copy(this.tempColor).lerp(Materials.C_SNOW_ASPHALT, snow * 0.23);
 
     // Autumn leaves color gradient: rich burnt amber and russet gold
-    this.leaf.color.set(0x496452).lerp(new THREE.Color(0xc96f2a), autumn).lerp(new THREE.Color(0xc7d1d1), snow);
-    this.pine.color.set(0x284b43).lerp(new THREE.Color(0x756b3e), autumn * 0.4).lerp(new THREE.Color(0xa5b9b9), snow * 0.8);
-    this.grass.color.set(0x8e9870).lerp(new THREE.Color(0xa79c65), autumn * 0.35).lerp(new THREE.Color(0xe0e6e3), snow);
+    this.leaf.color.copy(Materials.C_LEAF_BASE).lerp(Materials.C_LEAF_AUTUMN, autumn).lerp(Materials.C_LEAF_SNOW, snow);
+    this.pine.color.copy(Materials.C_PINE_BASE).lerp(Materials.C_PINE_AUTUMN, autumn * 0.4).lerp(Materials.C_PINE_SNOW, snow * 0.8);
+    this.grass.color.copy(Materials.C_GRASS_BASE).lerp(Materials.C_GRASS_AUTUMN, autumn * 0.35).lerp(Materials.C_GRASS_SNOW, snow);
 
-    this.rock.color.set(0x80796b).lerp(new THREE.Color(0xd5dcdf),snow*.78);
-    this.concrete.color.set(0x979c96).lerp(new THREE.Color(0xd6dcdf),snow*.55);
+    this.rock.color.copy(Materials.C_ROCK_BASE).lerp(Materials.C_ROCK_SNOW, snow * 0.78);
+    this.concrete.color.copy(Materials.C_CONCRETE_BASE).lerp(Materials.C_CONCRETE_SNOW, snow * 0.55);
     this.light.emissiveIntensity = 0.12 + night * 2.7;
     this.glass.emissiveIntensity = 0.08 + night * 0.9;
     this.signalGreen.emissiveIntensity = signal === 0 ? 3.0 : 0.05;

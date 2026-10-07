@@ -305,34 +305,6 @@ export class WorldChunk {
         }
       }
 
-      // Settled autumn leaf litter beneath broadleaf canopies
-      if (!tree.pine) {
-        const patchCount = 3 + Math.floor(tree.leafLoad * 4);
-        for (let patch = 0; patch < patchCount; patch++) {
-          const angle = random() * Math.PI * 2;
-          const radius = (0.22 + random() * 0.68) * tree.canopyRadius;
-          const patchS = tree.s + Math.cos(angle) * radius;
-          const patchO = tree.offset + Math.sin(angle) * radius;
-          // Road asphalt leaves: only possible if canopy actually extends over/near the shoulder
-          if (Math.abs(patchO) < 10.5 && Math.abs(tree.offset) > tree.canopyRadius + 6) continue;
-          const patchPos = groundPoint(patchS, patchO);
-          if (patchPos.y >= 8) {
-            batch.add(
-              'fallen-leaf',
-              m.leafGroundShape,
-              m.leaf,
-              patchPos.x,
-              patchPos.y + 0.018,
-              patchPos.z,
-              0.85 + random() * 0.45,
-              0.85 + random() * 0.45,
-              0.85 + random() * 0.45,
-              random() * Math.PI * 2,
-              -Math.PI / 2
-            );
-          }
-        }
-      }
     }
 
     // 9. LAYERED REAL GRASSLAND SYSTEM
